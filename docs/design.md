@@ -5,8 +5,10 @@ apnum should feel like an app Apple could have shipped with macOS 26: native con
 ## Principles
 
 - **Native first.** `NavigationSplitView`, toolbars, `List`, `Table`, `Form`, sheets, `ContentUnavailableView`, context menus, keyboard shortcuts. If a system component exists, use it before drawing your own.
-- **Glass floats, content sits.** Liquid Glass is for the control layer that floats above content: toolbars (automatic), in-content buttons (`.buttonStyle(.glass)`, primary actions `.buttonStyle(.glassProminent)`), clusters of related controls (`GlassEffectContainer`), and floating bars or banners (`.glassEffect(.regular, in: .capsule)` or `.rect(cornerRadius:)`, optionally `.tint(color.opacity(…))`). Content (lists, text, editors) sits on the plain window background. Never put glass on glass, and never wrap every block of content in a glass or shadowed card.
-- **The sky is the signature.** `Sky` (in `Theme.swift`) paints the colour of the sky across a day. It appears only where time-of-day is the subject: the Today ribbon, the menu bar glance and the app icon. Do not spread it to other screens.
+- **Buttons follow the Clock app** (`Controls.swift`). Actions are wide capsules: `.buttonStyle(.pill)` is the neutral grey one (Cancel, Lap, Reset), `.pill(.green)` starts, `.pill(.orange)` pauses, `.pill(.red)` stops, `.pill(.accentColor)` saves. Quick starts in lists are round: `.buttonStyle(.circle(.green))` with a play symbol. Toolbar buttons stay standard. Do not use `.buttonStyle(.glass)` / `.glassProminent` for buttons inside content: they render as odd grey shapes.
+- **Times are entered with `DigitField`** (click a segment and type, arrows, or the chevrons) backed by `DigitEntry`. Never use the graphical clock-face DatePicker.
+- **Glass floats, content sits.** Liquid Glass is for the control layer that floats above content: toolbars (automatic), floating bars or banners (`.glassEffect(.regular, in: .capsule)` or `.rect(cornerRadius:)`). Content (lists, text, editors) sits on the plain window background. The exception is Today, which is a dashboard of `GlassPanel`s over a `SkyBackdrop`.
+- **The sky is the signature.** `Sky` (in `Theme.swift`) paints the colour of the sky across a day. It appears only where time-of-day is the subject: Today (backdrop and ribbon), the menu bar glance and the app icon. Do not spread it to other screens.
 - **Times are the hero of time screens.** Use `ClockText` / `Font.clock` (SF Pro Rounded, thin or light, monospaced digits) for times and durations, large enough to read across a room on Alarms, Timers and the stopwatch.
 - **Quiet everywhere else.** System fonts and semantic colours (`.primary`, `.secondary`, `.tint`, `.red` for overdue or destructive). Calendar and list colours appear only as small dots, bars or checkboxes.
 
@@ -24,9 +26,10 @@ Sentence case, plain verbs, the user's vocabulary. Buttons say what happens ("Ne
 ## Layout
 
 - Detail pages: content padded 28–36 pt horizontally, readable width (text columns under ~720 pt), left-aligned.
+- Screens that mirror an Apple app should feel like that app: Alarms, Stopwatch and Timers follow macOS Clock; Calendar follows macOS Calendar (Day / Week / Month, Today, back and forward); Reminders and Notes follow theirs.
 - Page titles go in the toolbar (`.navigationTitle`, `.navigationSubtitle` for a short status), not as big headings in the content. Today is the exception: its date and clock are the content.
 - Must look right at the default 1100×740 window and at a narrow 820×560 window, in light and dark mode.
 
 ## Checking your work
 
-`scripts/snapshot.sh <section> <out.png> [light|dark] [width] [height]` launches the app in demo mode (sample data, throwaway data folder) in the background, captures only its window and quits. Sections: `today alarms timers calendar reminders notes activity`. Look at the screenshot, critique it against this document, fix, and capture again.
+`scripts/snapshot.sh <section> <out.png> [light|dark] [width] [height]` launches the app in demo mode (sample data, throwaway data folder) in the background, captures only its window and quits. Sections: `today alarms stopwatch timers calendar reminders notes activity glance`. Look at the screenshot, critique it against this document, fix, and capture again.

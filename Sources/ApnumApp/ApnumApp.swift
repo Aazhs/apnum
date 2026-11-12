@@ -35,7 +35,7 @@ struct ApnumApp: App {
 // MARK: - Navigation
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case today, alarms, timers, calendar, reminders, notes, activity
+    case today, alarms, stopwatch, timers, calendar, reminders, notes, activity
 
     var id: String { rawValue }
 
@@ -43,6 +43,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: "Today"
         case .alarms: "Alarms"
+        case .stopwatch: "Stopwatch"
         case .timers: "Timers"
         case .calendar: "Calendar"
         case .reminders: "Reminders"
@@ -55,6 +56,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         switch self {
         case .today: "sun.horizon"
         case .alarms: "alarm"
+        case .stopwatch: "stopwatch"
         case .timers: "timer"
         case .calendar: "calendar"
         case .reminders: "checklist"
@@ -65,13 +67,13 @@ enum AppSection: String, CaseIterable, Identifiable {
 
     /// Sidebar groups, in order.
     static let groups: [(title: String, sections: [AppSection])] = [
-        ("Time", [.today, .alarms, .timers]),
+        ("Time", [.today, .alarms, .stopwatch, .timers]),
         ("Plan", [.calendar, .reminders]),
         ("Write", [.notes]),
         ("Agents", [.activity]),
     ]
 
-    /// ⌘1 … ⌘7
+    /// ⌘1 … ⌘8
     var shortcut: KeyEquivalent { KeyEquivalent(Character(String((Self.allCases.firstIndex(of: self) ?? 0) + 1))) }
 }
 
@@ -133,6 +135,7 @@ struct MainView: View {
         switch section {
         case .today: TodayView()
         case .alarms: AlarmsView()
+        case .stopwatch: StopwatchView()
         case .timers: TimersView()
         case .calendar: CalendarView()
         case .reminders: RemindersView()
@@ -159,7 +162,7 @@ struct ErrorToast: View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
             Text(message).font(.callout).lineLimit(3)
-            Button("Dismiss", action: dismiss).buttonStyle(.glass).controlSize(.small)
+            Button("Dismiss", action: dismiss).buttonStyle(.pill)
         }
         .padding(.leading, 16)
         .padding(.trailing, 8)

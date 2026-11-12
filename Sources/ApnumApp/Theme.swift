@@ -12,34 +12,54 @@ import SwiftUI
 // MARK: - Sky palette
 
 enum Sky {
-    static let midnight = Color(hex: "#141B33")!
-    static let predawn = Color(hex: "#2B2D5C")!
-    static let dawn = Color(hex: "#F2A36B")!
-    static let morning = Color(hex: "#9CC8F2")!
-    static let noon = Color(hex: "#6FAEEB")!
-    static let afternoon = Color(hex: "#86B4E6")!
-    static let dusk = Color(hex: "#D17FA0")!
-    static let twilight = Color(hex: "#5B4A96")!
-    static let night = Color(hex: "#241F4A")!
-
-    /// Stops keyed by hour of day.
-    static let stops: [(hour: Double, color: Color)] = [
-        (0, midnight), (4.5, predawn), (6.5, dawn), (9, morning), (13, noon),
-        (16.5, afternoon), (18.6, dusk), (20, twilight), (21.5, night), (24, midnight),
+    /// Sky colours keyed by hour of day, as RGB.
+    private static let stops: [(hour: Double, rgb: (Double, Double, Double))] = [
+        (0, rgb(0x141B33)), (4.5, rgb(0x2B2D5C)), (6.5, rgb(0xF2A36B)), (9, rgb(0x9CC8F2)), (13, rgb(0x6FAEEB)),
+        (16.5, rgb(0x86B4E6)), (18.6, rgb(0xD17FA0)), (20, rgb(0x5B4A96)), (21.5, rgb(0x241F4A)), (24, rgb(0x141B33)),
     ]
+
+    private static func rgb(_ hex: UInt32) -> (Double, Double, Double) {
+        (Double((hex >> 16) & 0xFF) / 255, Double((hex >> 8) & 0xFF) / 255, Double(hex & 0xFF) / 255)
+    }
 
     /// The whole day, left to right.
     static var day: LinearGradient {
         LinearGradient(
-            stops: stops.map { Gradient.Stop(color: $0.color, location: $0.hour / 24) },
+            stops: stops.map { Gradient.Stop(color: Color(red: $0.rgb.0, green: $0.rgb.1, blue: $0.rgb.2), location: $0.hour / 24) },
             startPoint: .leading, endPoint: .trailing)
     }
 
-    /// The sky colour nearest to a given time.
-    static func color(at date: Date, calendar: Calendar = .current) -> Color {
+    static func hour(of date: Date, calendar: Calendar = .current) -> Double {
         let c = calendar.dateComponents([.hour, .minute], from: date)
-        let hour = Double(c.hour ?? 0) + Double(c.minute ?? 0) / 60
-        return stops.min { abs($0.hour - hour) < abs($1.hour - hour) }!.color
+        return Double(c.hour ?? 0) + Double(c.minute ?? 0) / 60
+    }
+
+    private static func components(atHour hour: Double) -> (Double, Double, Double) {
+        let h = (hour.truncatingRemainder(dividingBy: 24) + 24).truncatingRemainder(dividingBy: 24)
+        let upper = stops.firstIndex { $0.hour >= h } ?? stops.count - 1
+        let lower = max(upper - 1, 0)
+        let a = stops[lower], b = stops[upper]
+        let t = b.hour == a.hour ? 0 : (h - a.hour) / (b.hour - a.hour)
+        return (a.rgb.0 + (b.rgb.0 - a.rgb.0) * t, a.rgb.1 + (b.rgb.1 - a.rgb.1) * t, a.rgb.2 + (b.rgb.2 - a.rgb.2) * t)
+    }
+
+    /// The sky colour at an hour of the day (0-24), blended between stops.
+    static func color(atHour hour: Double) -> Color {
+        let c = components(atHour: hour)
+        return Color(red: c.0, green: c.1, blue: c.2)
+    }
+
+    static func color(at date: Date) -> Color { color(atHour: hour(of: date)) }
+
+    /// True when white text reads better than black on the sky.
+    static func isDark(atHour hour: Double) -> Bool {
+        let c = components(atHour: hour)
+        return 0.2126 * c.0 + 0.7152 * c.1 + 0.0722 * c.2 < 0.5
+    }
+
+    /// Darkens a colour towards black (amount 1 = unchanged).
+    static func shade(_ color: Color, by amount: Double) -> Color {
+        color.mix(with: .black, by: 1 - amount)
     }
 }
 
@@ -194,11 +214,10 @@ struct RingingBanner: View {
             Spacer(minLength: 12)
             if request.canSnooze {
                 Button("Snooze") { Task { await model.snooze(request) } }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.pill)
             }
             Button("Stop") { Task { await model.stopRinging(request) } }
-                .buttonStyle(.glassProminent)
-                .tint(.orange)
+                .buttonStyle(.pill(.orange))
                 .keyboardShortcut(.defaultAction)
         }
         .controlSize(.large)

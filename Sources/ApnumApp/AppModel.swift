@@ -47,6 +47,8 @@ final class AppModel {
     private(set) var reminderAccess: AccessState = .notDetermined
     /// Events from the start of today through the next 7 days.
     private(set) var upcomingEvents: [CalendarEvent] = []
+    /// Bumped whenever calendar data changes, so views that fetch their own ranges can reload.
+    private(set) var calendarRevision = 0
     /// Incomplete reminders across all lists.
     private(set) var openReminders: [Reminder] = []
 
@@ -203,6 +205,7 @@ final class AppModel {
             noteList = await notes.notes()
             noteTags = await notes.allTags()
         case .calendar:
+            calendarRevision += 1
             eventAccess = await calendar.eventAccess()
             guard eventAccess == .granted else { upcomingEvents = []; return }
             let start = Calendar.current.startOfDay(for: Date())
