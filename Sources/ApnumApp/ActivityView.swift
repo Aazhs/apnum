@@ -10,7 +10,6 @@ struct ActivityView: View {
 
     @Environment(AppModel.self) private var model
     @State private var part: Part = .recent
-    @State private var loaded: [AuditEntry] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -25,13 +24,9 @@ struct ActivityView: View {
             case .tools: ToolsList(tools: model.tools)
             }
         }
-        .task {
-            // The model only refreshes activity after an action, so load the existing log once.
-            if model.recentActivity.isEmpty { loaded = await model.audit.recent(limit: 100) }
-        }
     }
 
-    private var entries: [AuditEntry] { model.recentActivity.isEmpty ? loaded : model.recentActivity }
+    private var entries: [AuditEntry] { model.recentActivity }
 
     @ViewBuilder private var recent: some View {
         if entries.isEmpty {
@@ -100,7 +95,7 @@ private struct ToolsList: View {
             Text("\(tools.count) tools available to agents (MCP coming soon)")
                 .font(.callout).foregroundStyle(.secondary)
             ForEach(groups, id: \.domain) { group in
-                SwiftUI.Section(group.domain) {
+                Section(group.domain) {
                     ForEach(group.tools, id: \.name) { tool in
                         ToolRow(tool: tool, isExpanded: expanded.contains(tool.name)) {
                             if expanded.contains(tool.name) { expanded.remove(tool.name) } else { expanded.insert(tool.name) }

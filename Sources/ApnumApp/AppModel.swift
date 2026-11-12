@@ -106,6 +106,7 @@ final class AppModel {
         }
 
         for topic in [ChangeTopic.alarms, .timers, .notes, .calendar, .reminders] { await refresh(topic) }
+        await refreshActivity()
         _ = await ringer.requestNotificationPermission()
     }
 

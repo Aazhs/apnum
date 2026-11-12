@@ -28,7 +28,7 @@ struct SettingsView: View {
     // MARK: Alarms
 
     private var alarmsSection: some View {
-        SwiftUI.Section("Alarms") {
+        Section("Alarms") {
             Toggle("Mirror alarms to the Clock app", isOn: Binding(
                 get: { model.alarmSettings.mirrorToClockApp },
                 set: { value in Task { await model.setAlarmSettings(AlarmSettings(mirrorToClockApp: value)) } }))
@@ -60,7 +60,7 @@ struct SettingsView: View {
     // MARK: General
 
     private var generalSection: some View {
-        SwiftUI.Section("General") {
+        Section("General") {
             Toggle("Open at login", isOn: Binding(
                 get: { loginStatus == .enabled || loginStatus == .requiresApproval },
                 set: setLogin))
@@ -93,7 +93,7 @@ struct SettingsView: View {
     // MARK: Permissions
 
     private var permissionsSection: some View {
-        SwiftUI.Section("Permissions") {
+        Section("Permissions") {
             LabeledContent("Notifications") {
                 switch notificationStatus {
                 case .authorized, .provisional, .ephemeral:
@@ -149,7 +149,7 @@ struct SettingsView: View {
     // MARK: About
 
     private var aboutSection: some View {
-        SwiftUI.Section("About") {
+        Section("About") {
             let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
             LabeledContent("apnum", value: version)
             Text("MIT licensed · open source").foregroundStyle(.secondary)

@@ -4,7 +4,7 @@ A lightweight, open-source macOS menu bar hub for one person's day: alarms, time
 
 An Android companion app will follow, bringing the phone's SMS, OTPs, calls, notifications, files, WhatsApp and screen to the Mac, and letting the phone control the Mac in return.
 
-> **Status:** early development. The Mac app is being built first; the phone link and agent access come after.
+> **Status:** early development. The Mac menu bar app works (alarms, timers, notes, calendar, reminders, Mac controls, 50 tools); the phone link and agent access come next.
 
 ## Features
 
@@ -40,13 +40,17 @@ open build/Apnum.app
 
 Set `APNUM_SIGN_IDENTITY` to a code-signing identity to keep macOS permission grants across rebuilds.
 
+On first launch apnum asks for notification permission. Calendar and Reminders access is requested from the Agenda tab, and media keys need Accessibility access (Settings shows how).
+
+Data lives in `~/Library/Application Support/apnum` (`APNUM_HOME` overrides it): `alarms.json`, `timers.json`, `notes/*.md` and `audit.jsonl`.
+
 ## Mirroring alarms into the Clock app
 
 Optional. See [docs/clock-shortcuts.md](docs/clock-shortcuts.md).
 
 ## Roadmap
 
-1. Mac core: alarms, timers, notes, calendar, reminders, Mac control *(in progress)*
+1. Mac core: alarms, timers, notes, calendar, reminders, Mac control *(done, being polished)*
 2. Android companion and encrypted Wi-Fi pairing: SMS, OTP, call control, notifications, alarms, notes
 3. Phone files and screen mirroring
 4. WhatsApp bridge

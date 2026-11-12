@@ -133,7 +133,7 @@ private struct EventsPane: View {
                 } else {
                     List {
                         ForEach(days, id: \.day) { group in
-                            SwiftUI.Section(heading(group.day)) {
+                            Section(heading(group.day)) {
                                 ForEach(group.events) { event in
                                     EventRow(event: event)
                                         .contextMenu {

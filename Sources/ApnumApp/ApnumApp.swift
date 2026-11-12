@@ -22,7 +22,7 @@ struct ApnumApp: App {
     }
 }
 
-enum Section: String, CaseIterable, Identifiable {
+enum AppSection: String, CaseIterable, Identifiable {
     case alarms, timers, notes, agenda, activity
 
     var id: String { rawValue }
@@ -51,7 +51,7 @@ enum Section: String, CaseIterable, Identifiable {
 /// The menu bar window: ringing banner, section picker, the section, and an error line.
 struct RootView: View {
     @Environment(AppModel.self) private var model
-    @AppStorage("section") private var section: Section = .alarms
+    @AppStorage("section") private var section: AppSection = .alarms
 
     var body: some View {
         VStack(spacing: 0) {
@@ -60,7 +60,7 @@ struct RootView: View {
             }
 
             Picker("Section", selection: $section) {
-                ForEach(Section.allCases) { s in
+                ForEach(AppSection.allCases) { s in
                     Image(systemName: s.symbol).help(s.title).tag(s)
                 }
             }
