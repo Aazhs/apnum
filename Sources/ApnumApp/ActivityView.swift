@@ -1,7 +1,7 @@
 import ApnumCore
 import SwiftUI
 
-/// Activity: what actions ran recently, and the tools every caller can use.
+/// Activity: what has been done, and what agents and the phone are able to do.
 struct ActivityView: View {
     private enum Part: String, CaseIterable, Identifiable {
         case recent = "Recent", tools = "Tools"
@@ -10,156 +10,317 @@ struct ActivityView: View {
 
     @Environment(AppModel.self) private var model
     @State private var part: Part = .recent
+    @State private var selectedTool: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            Picker("View", selection: $part) {
-                ForEach(Part.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented).labelsHidden()
-            .padding(.horizontal, 10).padding(.vertical, 8)
-            Divider()
+        Group {
             switch part {
-            case .recent: recent
-            case .tools: ToolsList(tools: model.tools)
+            case .recent: RecentTable(entries: model.recentActivity)
+            case .tools: ToolsList(tools: model.tools, selection: $selectedTool)
             }
         }
-    }
-
-    private var entries: [AuditEntry] { model.recentActivity }
-
-    @ViewBuilder private var recent: some View {
-        if entries.isEmpty {
-            VStack(spacing: 8) {
-                Spacer()
-                Image(systemName: "list.bullet.rectangle").font(.largeTitle).foregroundStyle(.secondary)
-                Text("No activity yet").font(.headline)
-                Text("Actions you, agents and your phone take appear here.")
-                    .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-                Spacer()
+        .navigationTitle("Activity")
+        .navigationSubtitle("\(model.tools.count) tools available to agents")
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Picker("View", selection: $part) {
+                    ForEach(Part.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .fixedSize()
             }
-            .frame(maxWidth: .infinity).padding()
-        } else {
-            List(entries) { ActivityRow(entry: $0) }.listStyle(.plain)
         }
     }
 }
 
-private struct ActivityRow: View {
-    let entry: AuditEntry
+// MARK: - Recent
 
-    private var icon: (name: String, color: Color, label: String) {
-        switch entry.outcome {
-        case .ok: ("checkmark.circle.fill", .green, "Succeeded")
-        case .denied: ("nosign", .orange, "Denied")
-        case .error: ("xmark.circle.fill", .red, "Failed")
+private struct RecentTable: View {
+    let entries: [AuditEntry]
+
+    var body: some View {
+        if entries.isEmpty {
+            ContentUnavailableView(
+                "No activity yet", systemImage: "clock.arrow.circlepath",
+                description: Text("Every action taken by you, your agents or your phone is recorded here. Inputs are never stored."))
+        } else {
+            Table(entries) {
+                TableColumn("Time") { entry in
+                    Text(Self.relative(entry.date))
+                        .foregroundStyle(.secondary)
+                        .help(entry.date.formatted(date: .complete, time: .standard))
+                }
+                .width(min: 80, ideal: 100)
+                TableColumn("Action") { entry in
+                    Text(entry.tool).font(.system(.body, design: .monospaced))
+                }
+                .width(min: 140, ideal: 200)
+                TableColumn("Caller") { entry in
+                    Text(Self.callerName(entry.caller))
+                }
+                .width(min: 80, ideal: 110)
+                TableColumn("Result") { entry in
+                    ResultLabel(entry: entry)
+                }
+                .width(min: 110, ideal: 140)
+                TableColumn("Duration") { entry in
+                    Text("\(entry.durationMs) ms")
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                }
+                .width(min: 60, ideal: 80)
+            }
         }
     }
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: icon.name).foregroundStyle(icon.color).accessibilityLabel(icon.label)
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(entry.tool).font(.system(.callout, design: .monospaced)).lineLimit(1)
-                    Spacer(minLength: 4)
-                    Text(entry.date, format: .relative(presentation: .numeric))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                HStack(spacing: 6) {
-                    Text(entry.caller)
-                    Text("\(entry.durationMs) ms")
-                }
-                .font(.caption).foregroundStyle(.secondary)
-                if entry.outcome != .ok, let message = entry.message, !message.isEmpty {
-                    Text(message).font(.caption).foregroundStyle(icon.color).lineLimit(3)
-                }
-            }
+    private static let formatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+
+    static func relative(_ date: Date) -> String {
+        if abs(date.timeIntervalSinceNow) < 5 { return "Just now" }
+        return formatter.localizedString(for: date, relativeTo: Date())
+    }
+
+    static func callerName(_ caller: String) -> String {
+        if caller == "ui" { return "You" }
+        if caller == "system" { return "apnum" }
+        if caller == "cli" { return "Command line" }
+        for prefix in ["agent:", "phone:"] where caller.hasPrefix(prefix) {
+            let name = String(caller.dropFirst(prefix.count))
+            return name == "claude-code" ? "Claude Code" : name
         }
-        .padding(.vertical, 2)
+        return caller
+    }
+}
+
+private struct ResultLabel: View {
+    let entry: AuditEntry
+
+    var body: some View {
+        switch entry.outcome {
+        case .ok:
+            Label("Done", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .denied:
+            Label("Needs approval", systemImage: "hand.raised.fill")
+                .foregroundStyle(.orange)
+                .help(entry.message ?? "This action needs your approval.")
+        case .error:
+            Label("Failed", systemImage: "xmark.circle.fill")
+                .foregroundStyle(.red)
+                .help(entry.message ?? "The action failed.")
+        }
+    }
+}
+
+// MARK: - Tools
+
+private struct ToolGroup: Identifiable {
+    let title: String
+    let tools: [ToolDescriptor]
+    var id: String { title }
+
+    static let order = ["alarm", "timer", "stopwatch", "note", "calendar", "reminders", "mac", "shortcuts"]
+
+    static func title(forDomain domain: String) -> String {
+        switch domain {
+        case "alarm": "Alarms"
+        case "timer", "stopwatch": "Timers"
+        case "note": "Notes"
+        case "calendar": "Calendar"
+        case "reminders": "Reminders"
+        case "mac": "Mac"
+        case "shortcuts": "Shortcuts"
+        default: domain.prefix(1).uppercased() + domain.dropFirst()
+        }
+    }
+
+    static func groups(_ tools: [ToolDescriptor]) -> [ToolGroup] {
+        let grouped = Dictionary(grouping: tools) { title(forDomain: String($0.name.split(separator: ".").first ?? "")) }
+        func rank(_ title: String) -> Int {
+            order.firstIndex { Self.title(forDomain: $0) == title } ?? order.count
+        }
+        return grouped
+            .map { ToolGroup(title: $0.key, tools: $0.value.sorted { $0.name < $1.name }) }
+            .sorted { (rank($0.title), $0.title) < (rank($1.title), $1.title) }
     }
 }
 
 private struct ToolsList: View {
     let tools: [ToolDescriptor]
-    @State private var expanded: Set<String> = []
+    @Binding var selection: String?
 
-    private var groups: [(domain: String, tools: [ToolDescriptor])] {
-        let dict = Dictionary(grouping: tools) { String($0.name.split(separator: ".").first ?? "") }
-        return dict.keys.sorted().map { ($0, dict[$0]!.sorted { $0.name < $1.name }) }
-    }
+    private var selected: ToolDescriptor? { tools.first { $0.name == selection } }
 
     var body: some View {
-        List {
-            Text("\(tools.count) tools available to agents (MCP coming soon)")
-                .font(.callout).foregroundStyle(.secondary)
-            ForEach(groups, id: \.domain) { group in
-                Section(group.domain) {
+        List(selection: $selection) {
+            ForEach(ToolGroup.groups(tools)) { group in
+                Section(group.title) {
                     ForEach(group.tools, id: \.name) { tool in
-                        ToolRow(tool: tool, isExpanded: expanded.contains(tool.name)) {
-                            if expanded.contains(tool.name) { expanded.remove(tool.name) } else { expanded.insert(tool.name) }
-                        }
+                        ToolRow(tool: tool).tag(tool.name)
                     }
                 }
             }
+            Text("Agent access over MCP is coming next.")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .listRowSeparator(.hidden)
+                .selectionDisabled()
         }
-        .listStyle(.plain)
+        .inspector(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selection = nil } })) {
+            if let selected {
+                ToolInspector(tool: selected)
+                    .inspectorColumnWidth(min: 280, ideal: 340, max: 460)
+            }
+        }
     }
 }
 
 private struct ToolRow: View {
     let tool: ToolDescriptor
-    let isExpanded: Bool
-    let toggle: () -> Void
 
-    private var tierColor: Color {
-        switch tool.tier {
-        case .read: .green
-        case .write: .orange
-        case .dangerous: .red
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tool.name).font(.system(.body, design: .monospaced))
+                Text(tool.summary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 8)
+            TierBadge(tier: tool.tier)
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+// MARK: Inspector
+
+private struct Parameter: Identifiable {
+    let name: String
+    let type: String
+    let required: Bool
+    let detail: String?
+    let facts: [String]
+    var id: String { name }
+
+    static func parse(_ schema: JSONValue) -> [Parameter] {
+        guard case .object(let props)? = schema["properties"] else { return [] }
+        var required = Set<String>()
+        if case .array(let items)? = schema["required"] {
+            for case .string(let s) in items { required.insert(s) }
+        }
+        return props.keys.sorted().map { key in
+            let p = props[key] ?? .null
+            var facts: [String] = []
+            if case .array(let values)? = p["enum"] {
+                let names = values.compactMap { value -> String? in
+                    if case .string(let s) = value { return s }
+                    return nil
+                }
+                if !names.isEmpty { facts.append("One of " + names.joined(separator: ", ")) }
+            }
+            switch (number(p["minimum"]), number(p["maximum"])) {
+            case let (l?, h?): facts.append("From \(l) to \(h)")
+            case let (l?, nil): facts.append("At least \(l)")
+            case let (nil, h?): facts.append("At most \(h)")
+            default: break
+            }
+            if case .string(let f)? = p["format"] { facts.append("Format: \(f)") }
+            var description: String?
+            if case .string(let d)? = p["description"] { description = d }
+            return Parameter(name: key, type: typeName(p), required: required.contains(key), detail: description, facts: facts)
         }
     }
 
-    private var schemaText: String {
-        guard let data = try? JSONCoding.prettyEncoder.encode(tool.inputSchema) else { return "{}" }
+    private static func number(_ v: JSONValue?) -> String? {
+        guard case .number(let n)? = v else { return nil }
+        return n.rounded() == n ? String(Int(n)) : String(n)
+    }
+
+    private static func typeName(_ p: JSONValue) -> String {
+        guard case .string(let t)? = p["type"] else { return "any" }
+        if t == "array", let items = p["items"] { return "list of \(typeName(items))" }
+        return t
+    }
+}
+
+private struct ToolInspector: View {
+    let tool: ToolDescriptor
+    @State private var showSchema = false
+
+    private var parameters: [Parameter] { Parameter.parse(tool.inputSchema) }
+
+    private var tierMeaning: String {
+        switch tool.tier {
+        case .read: "Only reads data."
+        case .write: "Changes data on this Mac."
+        case .dangerous: "Acts outside apnum or can't be undone. Agents must ask first."
+        }
+    }
+
+    private var prettySchema: String {
+        guard let data = try? JSONCoding.prettyEncoder.encode(tool.inputSchema) else { return "" }
         return String(decoding: data, as: UTF8.self)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Button(action: toggle) {
-                HStack(alignment: .top, spacing: 6) {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption2).foregroundStyle(.secondary).frame(width: 10).padding(.top, 4)
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Text(tool.name).font(.system(.callout, design: .monospaced))
-                            Spacer(minLength: 4)
-                            Text(tool.tier.rawValue).font(.caption2.weight(.medium))
-                                .foregroundStyle(tierColor)
-                                .padding(.horizontal, 6).padding(.vertical, 1)
-                                .background(tierColor.opacity(0.15), in: Capsule())
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(tool.name)
+                        .font(.system(.title3, design: .monospaced, weight: .semibold))
+                        .textSelection(.enabled)
+                    Text(tool.summary).foregroundStyle(.secondary)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    TierBadge(tier: tool.tier)
+                    Text(tierMeaning).font(.callout)
+                }
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Input").font(.headline)
+                    if parameters.isEmpty {
+                        Text("Takes no input.").foregroundStyle(.secondary)
+                    } else {
+                        ForEach(parameters) { p in
+                            VStack(alignment: .leading, spacing: 2) {
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text(p.name).font(.system(.callout, design: .monospaced, weight: .medium))
+                                    Text(p.type).font(.caption).foregroundStyle(.secondary)
+                                    Spacer(minLength: 0)
+                                    Text(p.required ? "Required" : "Optional")
+                                        .font(.caption)
+                                        .foregroundStyle(p.required ? .primary : .tertiary)
+                                }
+                                if let detail = p.detail {
+                                    Text(detail).font(.callout).foregroundStyle(.secondary)
+                                }
+                                ForEach(p.facts, id: \.self) { fact in
+                                    Text(fact).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            if p.id != parameters.last?.id { Divider() }
                         }
-                        Text(tool.summary).font(.caption).foregroundStyle(.secondary)
-                            .multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityHint(isExpanded ? "Hides the input schema" : "Shows the input schema")
 
-            if isExpanded {
-                ScrollView(.horizontal) {
-                    Text(schemaText)
+                DisclosureGroup("JSON schema", isExpanded: $showSchema) {
+                    Text(prettySchema)
                         .font(.system(.caption, design: .monospaced))
                         .textSelection(.enabled)
-                        .padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 6)
                 }
-                .background(.quaternary.opacity(0.6), in: RoundedRectangle(cornerRadius: 6))
             }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.vertical, 2)
     }
 }
