@@ -6,6 +6,7 @@ import ApnumSystem
 import ApnumTimers
 import Foundation
 import Observation
+import AppKit
 
 /// The composition root. Builds every service, registers all of their tools in
 /// one `ToolRegistry`, drives alarms and timers with a `WakeScheduler`, and keeps
@@ -55,6 +56,15 @@ final class AppModel {
     private(set) var recentActivity: [AuditEntry] = []
     var lastError: String?
 
+    /// The section shown in the main window. APNUM_SECTION picks the first one (for screenshots).
+    /// A note the Notes screen should open (set by Today when a note is clicked).
+    var focusNoteID: UUID?
+
+    var section: AppSection = AppSection(rawValue: ProcessInfo.processInfo.environment["APNUM_SECTION"] ?? "") ?? .today
+
+    /// APNUM_DEMO=1 uses sample calendar data and seeds alarms, timers and notes into an empty data folder.
+    @ObservationIgnored let isDemo = ProcessInfo.processInfo.environment["APNUM_DEMO"] == "1"
+
     var tools: [ToolDescriptor] { registry.descriptors }
 
     // MARK: Setup
@@ -67,7 +77,9 @@ final class AppModel {
         alarms = AlarmService(paths: paths, ringer: ringer, changes: changes, mirror: ClockAppMirror(runner: shortcuts))
         timers = TimerService(paths: paths, ringer: ringer, changes: changes)
         notes = NoteService(paths: paths, changes: changes)
-        calendar = CalendarService.live(changes: changes)
+        calendar = ProcessInfo.processInfo.environment["APNUM_DEMO"] == "1"
+            ? CalendarService(backend: InMemoryCalendarBackend.demo(), changes: changes)
+            : CalendarService.live(changes: changes)
         let system = SystemService(control: LiveSystemControl(), shortcuts: shortcuts, notifier: ringer)
         registry = ToolRegistry(
             tools: alarms.makeTools() + timers.makeTools() + notes.makeTools() + calendar.makeTools() + system.makeTools(),
@@ -105,9 +117,16 @@ final class AppModel {
             }
         }
 
+        switch ProcessInfo.processInfo.environment["APNUM_APPEARANCE"] {
+        case "dark": NSApp.appearance = NSAppearance(named: .darkAqua)
+        case "light": NSApp.appearance = NSAppearance(named: .aqua)
+        default: break
+        }
+        if isDemo { await DemoData.seedIfEmpty(self) }
+
         for topic in [ChangeTopic.alarms, .timers, .notes, .calendar, .reminders] { await refresh(topic) }
         await refreshActivity()
-        _ = await ringer.requestNotificationPermission()
+        if !isDemo { _ = await ringer.requestNotificationPermission() }
     }
 
     // MARK: Actions

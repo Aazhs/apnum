@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 // Each feature is its own target that depends only on ApnumCore.
@@ -7,7 +7,7 @@ let features = ["ApnumAlarms", "ApnumTimers", "ApnumNotes", "ApnumCalendar", "Ap
 
 let package = Package(
     name: "apnum",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v26)],
     products: [
         .executable(name: "Apnum", targets: ["ApnumApp"]),
         .library(name: "ApnumCore", targets: ["ApnumCore"]),
