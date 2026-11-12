@@ -116,6 +116,11 @@ final class AppModel {
         do { try await notes.load() } catch { report(error) }
         await calendar.startObservingChanges()
         await sky.load()
+        // Debug only: APNUM_SKY_TIME=HH:mm opens with the sky previewed at that time (scripts/snapshot.sh).
+        if let t = ProcessInfo.processInfo.environment["APNUM_SKY_TIME"], t.count == 5,
+            let h = Int(t.prefix(2)), let m = Int(t.suffix(2)) {
+            skyPreview = Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: Date())
+        }
         await refreshSky()
         Task { [weak self, sky] in
             // The sky moves slowly: recompute once a minute, and let the service

@@ -79,59 +79,82 @@ enum AlarmRepeat {
 
 struct TodayView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("animatedSky") private var animatedSky = true
+
+    /// Height of the living sky at the top of the page.
+    private let heroHeight: CGFloat = 600
 
     var body: some View {
         TimelineView(.everyMinute) { context in
             let now = context.date
             let shown = model.skyPreview ?? now
-            let dark = model.skyScene?.isDark ?? Sky.isDark(atHour: Sky.hour(of: now))
+            let scene = model.skyScene
+            let skyIsDark = scene?.isDark ?? Sky.isDark(atHour: Sky.hour(of: now))
             ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(alignment: .bottom, spacing: 18) {
-                        hero(shown, previewing: model.skyPreview != nil, now: now)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        if let summary = model.skySummary, let scene = model.skyScene {
-                            SkyReadout(summary: summary, scene: scene, now: shown)
-                                .frame(width: 340)
-                                .fixedSize(horizontal: false, vertical: true)
+                VStack(spacing: 0) {
+                    // The hero: the real sky over the pixel landscape, with the clock in it.
+                    ZStack(alignment: .top) {
+                        if let scene {
+                            PixelSkyView(scene: scene, animated: animatedSky)
+                        } else {
+                            SkyBackdrop(now: now)
                         }
-                    }
-
-                    GlassPanel("Your day", symbol: "sun.horizon") {
-                        DayRibbon(now: now)
-                            .frame(height: 150)
-                    }
-                    .frame(height: 220)
-
-                    HStack(alignment: .top, spacing: 18) {
-                        comingUp(now)
-                        VStack(spacing: 18) {
-                            nextAlarm(now)
-                            timers
-                            dueToday(now)
+                        HStack(alignment: .top, spacing: 18) {
+                            hero(shown, previewing: model.skyPreview != nil, now: now)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            if let summary = model.skySummary, let scene {
+                                SkyReadout(summary: summary, scene: scene, now: shown)
+                                    .frame(width: 340)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
                         }
-                        .frame(width: 320)
+                        .padding(.horizontal, 32)
+                        .padding(.top, 70)
+                        .frame(maxWidth: 1180)
+                        .environment(\.colorScheme, skyIsDark ? .dark : .light)
                     }
+                    .frame(height: heroHeight)
+                    .clipped()
 
-                    notes
+                    // The day's details sit on the ground below the scene.
+                    VStack(alignment: .leading, spacing: 18) {
+                        GlassPanel("Your day", symbol: "sun.horizon") {
+                            DayRibbon(now: now)
+                                .frame(height: 150)
+                        }
+                        .frame(height: 220)
+
+                        HStack(alignment: .top, spacing: 18) {
+                            comingUp(now)
+                            VStack(spacing: 18) {
+                                nextAlarm(now)
+                                timers
+                                dueToday(now)
+                            }
+                            .frame(width: 320)
+                        }
+
+                        notes
+                    }
+                    .padding(.horizontal, 32)
+                    .padding(.top, 22)
+                    .padding(.bottom, 32)
+                    .frame(maxWidth: 1180)
+                    .frame(maxWidth: .infinity)
+                    .environment(\.colorScheme, .dark)
                 }
-                .padding(.horizontal, 32)
-                .padding(.top, 12)
-                .padding(.bottom, 32)
-                .frame(maxWidth: 1180)
-                .frame(maxWidth: .infinity)
             }
             .scrollContentBackground(.hidden)
-            .background {
-                if let scene = model.skyScene {
-                    SceneBackdrop(scene: scene)
-                } else {
-                    SkyBackdrop(now: now)
-                }
-            }
-            .environment(\.colorScheme, dark ? .dark : .light)
+            .background(groundColor(scene).ignoresSafeArea())
+            .ignoresSafeArea(edges: .top)
         }
         .navigationTitle("Today")
+    }
+
+    /// Below the scene the page continues in the colour of the ground.
+    private func groundColor(_ scene: SkyScene?) -> Color {
+        guard let p = scene?.palette else { return Color(nsColor: .windowBackgroundColor) }
+        return p.ground.mix(p.near, 0.3).color
     }
 
     // MARK: Hero
