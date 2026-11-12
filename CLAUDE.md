@@ -1,0 +1,37 @@
+# apnum
+
+A personal macOS hub (alarms, timers, notes, calendar, reminders, Mac control) that will later bridge to an Android phone and expose every capability to AI agents over MCP. MIT licensed.
+
+## Build and test
+
+Xcode is installed but `xcode-select` still points at the Command Line Tools, so always prefix Swift commands:
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+swift build                          # everything
+swift build --target ApnumAlarms     # one module
+swift test --filter ApnumAlarmsTests # one module's tests
+scripts/bundle.sh                    # builds build/Apnum.app (needed for Calendar/notification permissions)
+```
+
+## Architecture
+
+- `ApnumCore` — no AppKit/SwiftUI. Tool protocol, `ToolRegistry`, `PermissionPolicy`, `AuditLog`, `ChangeFeed`, `JSONFileStore`, `AppPaths`, `SyncRecord`, and platform protocols (`Ringer`, `ShortcutRunning`, `Ticker`).
+- Feature modules depend only on `ApnumCore`, never on each other: `ApnumAlarms`, `ApnumTimers`, `ApnumNotes`, `ApnumCalendar`, `ApnumSystem`.
+- `ApnumApp` — SwiftUI menu bar app and the composition root. It builds every service, collects their tools into one `ToolRegistry`, and the UI performs every action through `registry.call(...)`.
+
+The rule that makes agents easy later: **every action is a `Tool`**. The UI may read service state directly for display, but anything that changes state goes through the registry, so the UI, agents and the phone all get the same permissions and audit trail.
+
+## Conventions
+
+- Swift 6 language mode, strict concurrency. Services are `actor`s or `@MainActor` classes; models are `Sendable` value types.
+- Each feature module exposes: models, a service, a `Tools.swift` with one `Tool` struct per action, and a `public func makeTools() -> [AnyTool]` on the service (or a free function) returning all of them.
+- Tool names: `domain.verb` or `domain.noun.verb`, lowercase (`alarm.create`, `mac.volume.set`). Summaries are one plain sentence an agent can act on. `inputSchema` must match `Input` exactly.
+- Pick the tier honestly: `read` (no changes), `write` (local, reversible), `dangerous` (outward-facing, destructive or hard to undo).
+- Records that will sync to the phone conform to `SyncRecord` (UUID id, `updatedAt`, `deletedAt` tombstone). Never hard-delete them.
+- Services publish to the shared `ChangeFeed` after every change.
+- Time-based services expose `tick(now: Date)` and are driven by `Ticker`, so tests pass fixed dates instead of sleeping.
+- Persist with `JSONFileStore` or plain files under `AppPaths`. Tests use `AppPaths.temporary()`.
+- Tests use Swift Testing (`import Testing`, `@Test`, `#expect`). Do not test against the real Calendar, Shortcuts or system volume; put those behind a protocol and test the logic with a fake.
+- No third-party dependencies without discussing it first. Anything borrowed must be MIT/Apache/BSD compatible.
+- Never log tool inputs or outputs; they can contain private data.
