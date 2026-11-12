@@ -88,7 +88,8 @@ public final class MacRinger: Ringer, Notifying, Sendable {
             let timeout = Task { [weak self] in
                 try? await Task.sleep(for: Self.maxRingDuration)
                 guard !Task.isCancelled else { return }
-                await self?.stop(id: request.id)
+                // Treat an unanswered ring as Stop so the alarm/timer state is cleared too.
+                await self?.handle(kind: request.kind, id: request.id, response: .stop)
             }
             var sound: NSSound?
             if playsSound {
