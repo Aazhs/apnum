@@ -273,7 +273,9 @@ private struct DueReminderRow: View {
                 Text(reminder.title).lineLimit(2)
                 if let due = reminder.dueDate {
                     let overdue = due < now
-                    Text(overdue ? "Overdue since \(due.formatted(.dateTime.weekday().hour().minute()))" : "Due \(ClockFormat.string(due))")
+                    Text(overdue
+                        ? "Overdue since \(Calendar.current.isDate(due, inSameDayAs: now) ? ClockFormat.string(due) : due.formatted(.dateTime.weekday(.wide)))"
+                        : "Due \(ClockFormat.string(due))")
                         .font(.caption)
                         .foregroundStyle(overdue ? .red : .secondary)
                 }
@@ -327,9 +329,9 @@ struct DayRibbon: View {
                         ForEach(lanes) { placed in
                             eventCapsule(placed, x: x, width: width)
                         }
-                        ForEach(markers) { marker in
-                            markerView(marker)
-                                .position(x: min(max(x(marker.date), 18), width - 18), y: compact ? height / 2 : 26)
+                        ForEach(layout(markers, x: x, width: width)) { placed in
+                            markerView(placed.marker, iconOnly: placed.iconOnly)
+                                .position(x: placed.x, y: compact ? height / 2 : 26)
                         }
                     }
                     .frame(width: width, height: height, alignment: .topLeading)
@@ -381,24 +383,32 @@ struct DayRibbon: View {
 
     private func eventCapsule(_ placed: PlacedEvent, x: (Date) -> CGFloat, width: CGFloat) -> some View {
         let start = x(placed.event.start), end = x(placed.event.end)
-        let w = max(end - start, compact ? 6 : 30)
-        let h: CGFloat = compact ? 8 : 30
-        let y: CGFloat = compact ? 6 + CGFloat(placed.lane) * 10 : 62 + CGFloat(placed.lane) * 38
+        let w = max(end - start, compact ? 6 : 14)
+        let h: CGFloat = compact ? 8 : 28
+        let y: CGFloat = compact ? 6 + CGFloat(placed.lane) * 10 : 64 + CGFloat(placed.lane) * 36
         let tint = Color(hex: placed.event.colorHex) ?? .accentColor
+        let help = "\(placed.event.title), \(ClockFormat.string(placed.event.start)) to \(ClockFormat.string(placed.event.end))"
         return Group {
             if compact {
                 Capsule().fill(tint.opacity(0.9))
             } else {
-                Text(placed.event.title)
-                    .font(.caption.weight(.semibold))
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .frame(width: w, height: h, alignment: .leading)
-                    .glassEffect(.regular.tint(tint.opacity(0.55)), in: .capsule)
-                    .help("\(placed.event.title), \(ClockFormat.string(placed.event.start)) to \(ClockFormat.string(placed.event.end))")
+                ZStack(alignment: .leading) {
+                    if w >= 64 {
+                        Text(placed.event.title)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .lineLimit(1)
+                            .padding(.horizontal, 10)
+                    }
+                }
+                .frame(width: w, height: h, alignment: .leading)
+                .background(tint.opacity(0.78), in: .capsule)
+                .glassEffect(.regular, in: .capsule)
+                .help(help)
             }
         }
         .frame(width: w, height: h)
+        .opacity(placed.event.end < now ? 0.55 : 1)
         .offset(x: start, y: y)
     }
 
@@ -425,19 +435,59 @@ struct DayRibbon: View {
         return out
     }
 
+    private struct PlacedMarker: Identifiable {
+        let marker: Marker
+        var x: CGFloat
+        var iconOnly: Bool
+        var width: CGFloat
+        var id: String { marker.id }
+    }
+
+    /// Places markers left to right. A marker that would collide with the one
+    /// before it drops its label; if it still collides it shifts right.
+    private func layout(_ markers: [Marker], x: (Date) -> CGFloat, width: CGFloat) -> [PlacedMarker] {
+        let gap: CGFloat = 6, icon: CGFloat = compact ? 18 : 28
+        var placed: [PlacedMarker] = []
+        // Left to right: drop the label if it would collide, then shift right if still needed.
+        var lastRight: CGFloat = -.infinity
+        for marker in markers.sorted(by: { $0.date < $1.date }) {
+            let center = x(marker.date)
+            let full = compact ? icon : CGFloat(marker.label.count) * 7 + 40
+            var w = full, iconOnly = compact
+            if center - full / 2 < lastRight + gap { w = icon; iconOnly = true }
+            let c = max(max(center, lastRight + gap + w / 2), w / 2 + 6)
+            placed.append(PlacedMarker(marker: marker, x: c, iconOnly: iconOnly, width: w))
+            lastRight = c + w / 2
+        }
+        // Right to left: keep everything inside the ribbon, shrinking labels before shifting left.
+        var limit = width - 6
+        for i in placed.indices.reversed() {
+            if placed[i].x + placed[i].width / 2 > limit, !placed[i].iconOnly {
+                placed[i].iconOnly = true
+                placed[i].width = icon
+            }
+            placed[i].x = min(placed[i].x, limit - placed[i].width / 2)
+            limit = placed[i].x - placed[i].width / 2 - gap
+        }
+        return placed
+    }
+
     @ViewBuilder
-    private func markerView(_ marker: Marker) -> some View {
-        if compact {
+    private func markerView(_ marker: Marker, iconOnly: Bool) -> some View {
+        if iconOnly {
             Image(systemName: marker.symbol)
-                .font(.system(size: 9, weight: .bold))
-                .frame(width: 18, height: 18)
+                .font(.system(size: compact ? 9 : 12, weight: .bold))
+                .frame(width: compact ? 18 : 28, height: compact ? 18 : 28)
                 .glassEffect(.regular, in: .circle)
+                .help(marker.label)
         } else {
             Label(marker.label, systemImage: marker.symbol)
                 .font(.caption.weight(.semibold))
                 .labelStyle(.titleAndIcon)
+                .lineLimit(1)
+                .fixedSize()
                 .padding(.horizontal, 9)
-                .frame(height: 26)
+                .frame(height: 28)
                 .glassEffect(.regular, in: .capsule)
                 .help(marker.label)
         }
