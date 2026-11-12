@@ -16,7 +16,7 @@ public struct KonamiDetector: Sendable, Equatable {
         if key == seq[progress] {
             progress += 1
         } else {
-            progress = key == seq[0] ? 1 : 0
+            progress = key == seq[0] ? (progress == 2 ? 2 : 1) : 0  // "up up up" keeps the two ups
         }
         if progress == seq.count {
             progress = 0
