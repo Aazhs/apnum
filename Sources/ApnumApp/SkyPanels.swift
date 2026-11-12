@@ -151,3 +151,23 @@ extension SkyScene {
         }
     }
 }
+
+/// A plain backdrop from the live palette: the sky from zenith to horizon.
+/// Used until (and wherever) the animated pixel scene is not shown.
+struct SceneBackdrop: View {
+    let scene: SkyScene
+
+    var body: some View {
+        let p = scene.palette
+        LinearGradient(
+            stops: [
+                .init(color: p.skyTop.color, location: 0), .init(color: p.sky.color, location: 0.38),
+                .init(color: p.skyLow.color, location: 0.6), .init(color: p.haze.color, location: 0.74),
+                .init(color: p.mid.color, location: 1),
+            ],
+            startPoint: .top, endPoint: .bottom)
+            .ignoresSafeArea()
+            .animation(.linear(duration: 2), value: p)
+            .accessibilityHidden(true)
+    }
+}

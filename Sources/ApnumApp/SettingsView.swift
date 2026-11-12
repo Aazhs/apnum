@@ -3,6 +3,7 @@ import ApnumCalendar
 import ApnumCore
 import AppKit
 import ServiceManagement
+import ApnumSky
 import SwiftUI
 import UserNotifications
 
@@ -14,6 +15,8 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             AlarmSettingsTab()
                 .tabItem { Label("Alarms", systemImage: "alarm") }
+            SkySettingsTab()
+                .tabItem { Label("Sky", systemImage: "moon.stars") }
             PermissionSettings()
                 .tabItem { Label("Permissions", systemImage: "hand.raised") }
             AboutSettings()
@@ -227,6 +230,72 @@ private struct AboutSettings: View {
                 if let license = URL(string: "https://github.com/Aazhs/apnum/blob/main/LICENSE") {
                     LabeledContent("License") { Link("MIT License", destination: license) }
                 }
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
+
+// MARK: - Sky
+
+private struct SkySettingsTab: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage("tintWithSky") private var tintWithSky = true
+    @AppStorage("animatedSky") private var animatedSky = true
+    @State private var latitude = ""
+    @State private var longitude = ""
+    @State private var placeName = ""
+
+    var body: some View {
+        Form {
+            Section {
+                Picker("City", selection: Binding(
+                    get: { model.skySettings?.location.name ?? "" },
+                    set: { name in
+                        if let preset = GeoLocation.preset(named: name) { Task { await model.setSkyLocation(preset) } }
+                    }
+                )) {
+                    let current = model.skySettings?.location
+                    if let current, GeoLocation.preset(named: current.name) == nil {
+                        Text(current.name).tag(current.name)
+                    }
+                    ForEach(GeoLocation.presets, id: \.name) { Text($0.name).tag($0.name) }
+                }
+                LabeledContent("Custom place") {
+                    HStack {
+                        TextField("Name", text: $placeName).frame(width: 110)
+                        TextField("Latitude", text: $latitude).frame(width: 80)
+                        TextField("Longitude", text: $longitude).frame(width: 80)
+                        Button("Use") {
+                            guard let lat = Double(latitude), let lon = Double(longitude),
+                                (-90...90).contains(lat), (-180...180).contains(lon) else { return }
+                            let name = placeName.trimmingCharacters(in: .whitespaces)
+                            Task { await model.setSkyLocation(GeoLocation(name: name.isEmpty ? "Here" : name, latitude: lat, longitude: lon)) }
+                        }
+                        .disabled(Double(latitude) == nil || Double(longitude) == nil)
+                    }
+                    .textFieldStyle(.roundedBorder)
+                }
+            } header: {
+                Text("Location")
+            } footer: {
+                Text("The sun, moon, stars and sunrise times are worked out for this place. apnum never reads your device's location.")
+            }
+
+            Section {
+                Toggle("Live weather", isOn: Binding(
+                    get: { model.skySettings?.liveWeather ?? true },
+                    set: { on in Task { await model.setLiveWeather(on) } }
+                ))
+            } footer: {
+                Text("Fetches the current weather for the place above from Open-Meteo every 15 minutes. Only the coordinates are sent.")
+            }
+
+            Section {
+                Toggle("Tint apnum with the sky", isOn: $tintWithSky)
+                Toggle("Animate the sky on Today", isOn: $animatedSky)
+            } footer: {
+                Text("The accent colour follows the sky: blue by day, rose and amber around sunrise and sunset, moonlit lavender at night.")
             }
         }
         .formStyle(.grouped)

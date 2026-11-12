@@ -2,6 +2,7 @@ import ApnumAlarms
 import ApnumCalendar
 import ApnumCore
 import ApnumNotes
+import ApnumSky
 import ApnumSystem
 import ApnumTimers
 import Foundation
@@ -27,6 +28,7 @@ final class AppModel {
     @ObservationIgnored let timers: TimerService
     @ObservationIgnored let notes: NoteService
     @ObservationIgnored let calendar: CalendarService
+    @ObservationIgnored let sky: SkyService
     @ObservationIgnored private let scheduler = WakeScheduler()
     @ObservationIgnored private var started = false
 
@@ -51,6 +53,15 @@ final class AppModel {
     private(set) var calendarRevision = 0
     /// Incomplete reminders across all lists.
     private(set) var openReminders: [Reminder] = []
+
+    /// The live sky (or the previewed one while `skyPreview` is set).
+    private(set) var skyScene: SkyScene?
+    private(set) var skySummary: SkySummary?
+    private(set) var skySettings: SkySettings?
+    /// A time the user is scrubbing to on Today; nil means now.
+    var skyPreview: Date? {
+        didSet { Task { await refreshSky() } }
+    }
 
     /// Alarms and timers that are ringing right now.
     private(set) var ringing: [RingRequest] = []
@@ -82,9 +93,12 @@ final class AppModel {
         calendar = ProcessInfo.processInfo.environment["APNUM_DEMO"] == "1"
             ? CalendarService(backend: InMemoryCalendarBackend.demo(), changes: changes)
             : CalendarService.live(changes: changes)
+        sky = SkyService(
+            paths: paths, changes: changes,
+            weather: ProcessInfo.processInfo.environment["APNUM_DEMO"] == "1" ? nil : OpenMeteoWeather())
         let system = SystemService(control: LiveSystemControl(), shortcuts: shortcuts, notifier: ringer)
         registry = ToolRegistry(
-            tools: alarms.makeTools() + timers.makeTools() + notes.makeTools() + calendar.makeTools() + system.makeTools(),
+            tools: alarms.makeTools() + timers.makeTools() + notes.makeTools() + calendar.makeTools() + sky.makeTools() + system.makeTools(),
             audit: audit)
     }
 
@@ -101,6 +115,17 @@ final class AppModel {
         do { try await timers.load() } catch { report(error) }
         do { try await notes.load() } catch { report(error) }
         await calendar.startObservingChanges()
+        await sky.load()
+        await refreshSky()
+        Task { [weak self, sky] in
+            // The sky moves slowly: recompute once a minute, and let the service
+            // decide when the weather is stale (every 15 minutes at most).
+            while !Task.isCancelled {
+                if await sky.refreshWeather() { await self?.refreshSky() }
+                try? await Task.sleep(for: .seconds(60))
+                await self?.refreshSky()
+            }
+        }
 
         let alarms = alarms, timers = timers
         scheduler.start(
@@ -152,6 +177,25 @@ final class AppModel {
         do { try await alarms.setSettings(settings) } catch { report(error) }
     }
 
+    func setSkyLocation(_ location: GeoLocation) async {
+        await sky.setLocation(location)
+        _ = await sky.refreshWeather(force: true)
+        await refreshSky()
+    }
+
+    func setLiveWeather(_ on: Bool) async {
+        await sky.setLiveWeather(on)
+        if on { _ = await sky.refreshWeather(force: true) }
+        await refreshSky()
+    }
+
+    func refreshSky() async {
+        let date = skyPreview ?? Date()
+        skyScene = await sky.scene(at: date)
+        skySummary = await sky.summary(at: date)
+        skySettings = await sky.settings()
+    }
+
     func requestCalendarAccess() async {
         do {
             _ = try await calendar.requestEventAccess()
@@ -181,6 +225,10 @@ final class AppModel {
 
     private func handle(_ topic: ChangeTopic) async {
         if topic == .alarms || topic == .timers { scheduler.poke() }
+        if topic == .sky {
+            await refreshSky()
+            return
+        }
         if topic == .ringing {
             await refresh(.alarms)
             await refresh(.timers)

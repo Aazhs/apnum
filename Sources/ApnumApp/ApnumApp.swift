@@ -79,6 +79,7 @@ enum AppSection: String, CaseIterable, Identifiable {
 
 struct MainView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("tintWithSky") private var tintWithSky = true
 
     var body: some View {
         @Bindable var model = model
@@ -116,6 +117,7 @@ struct MainView: View {
                 }
                 .animation(.easeOut(duration: 0.2), value: model.lastError)
         }
+        .tint(tintWithSky ? model.skyScene?.accent : nil)
     }
 
     @ViewBuilder

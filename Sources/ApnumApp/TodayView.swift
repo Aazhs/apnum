@@ -2,6 +2,7 @@ import ApnumAlarms
 import ApnumCalendar
 import ApnumCore
 import ApnumNotes
+import ApnumSky
 import ApnumTimers
 import SwiftUI
 
@@ -82,15 +83,18 @@ struct TodayView: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             let now = context.date
-            let dark = Sky.isDark(atHour: Sky.hour(of: now))
+            let shown = model.skyPreview ?? now
+            let dark = model.skyScene?.isDark ?? Sky.isDark(atHour: Sky.hour(of: now))
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack(alignment: .bottom, spacing: 18) {
-                        hero(now)
+                        hero(shown, previewing: model.skyPreview != nil, now: now)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        nextAlarm(now)
-                            .frame(width: 320)
-                            .fixedSize(horizontal: false, vertical: true)
+                        if let summary = model.skySummary, let scene = model.skyScene {
+                            SkyReadout(summary: summary, scene: scene, now: shown)
+                                .frame(width: 340)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
 
                     GlassPanel("Your day", symbol: "sun.horizon") {
@@ -102,6 +106,7 @@ struct TodayView: View {
                     HStack(alignment: .top, spacing: 18) {
                         comingUp(now)
                         VStack(spacing: 18) {
+                            nextAlarm(now)
                             timers
                             dueToday(now)
                         }
@@ -117,7 +122,13 @@ struct TodayView: View {
                 .frame(maxWidth: .infinity)
             }
             .scrollContentBackground(.hidden)
-            .background { SkyBackdrop(now: now) }
+            .background {
+                if let scene = model.skyScene {
+                    SceneBackdrop(scene: scene)
+                } else {
+                    SkyBackdrop(now: now)
+                }
+            }
             .environment(\.colorScheme, dark ? .dark : .light)
         }
         .navigationTitle("Today")
@@ -126,17 +137,24 @@ struct TodayView: View {
     // MARK: Hero
 
     /// Date and a large clock straight on the sky, like a lock screen.
-    private func hero(_ now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Text(now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+    private func hero(_ shown: Date, previewing: Bool, now: Date) -> some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 0) {
+            Text(previewing ? "Previewing the sky" : shown.formatted(.dateTime.weekday(.wide).day().month(.wide)))
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.secondary)
-            ClockText(now, size: 120, weight: .thin)
+                .contentTransition(.opacity)
+            ClockText(shown, size: 120, weight: .thin)
                 .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+                .opacity(previewing ? 0.85 : 1)
             Text(summary(now))
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)
+                .opacity(previewing ? 0 : 1)
+            SkyTimeTravel(preview: $model.skyPreview, now: now)
+                .frame(maxWidth: 520)
+                .padding(.top, 14)
         }
     }
 

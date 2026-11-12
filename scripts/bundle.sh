@@ -23,6 +23,10 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/Apnum"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 if [ -f Resources/AppIcon.icns ]; then cp Resources/AppIcon.icns "$APP/Contents/Resources/"; fi
+# SwiftPM resource bundles (e.g. the star catalogue) are looked up in Contents/Resources.
+for b in "$(dirname "$BIN")"/*.bundle; do
+  [ -d "$b" ] && cp -R "$b" "$APP/Contents/Resources/"
+done
 
 codesign --force --sign "${APNUM_SIGN_IDENTITY:--}" --timestamp=none "$APP"
 echo "Built $APP"
