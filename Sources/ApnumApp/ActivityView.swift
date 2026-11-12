@@ -226,7 +226,10 @@ private struct Parameter: Identifiable {
                 if !names.isEmpty { facts.append("One of " + names.joined(separator: ", ")) }
             }
             switch (number(p["minimum"]), number(p["maximum"])) {
-            case let (l?, h?): facts.append("From \(l) to \(h)")
+            case let (l?, h?):
+                // Skip when the description already states the range ("Hour, 0-23").
+                if case .string(let d)? = p["description"], d.contains("\(l)-\(h)") { break }
+                facts.append("From \(l) to \(h)")
             case let (l?, nil): facts.append("At least \(l)")
             case let (nil, h?): facts.append("At most \(h)")
             default: break

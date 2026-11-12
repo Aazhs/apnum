@@ -188,12 +188,12 @@ private struct EventRow: View {
         let start = max(event.start, day), end = min(event.end, nextDay)
         let detail = [event.location, event.calendarTitle].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
         HStack(alignment: .top, spacing: 12) {
-            VStack(alignment: .trailing, spacing: 1) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(ClockFormat.string(start)).font(.callout.weight(.medium))
                 Text(ClockFormat.string(end)).font(.caption).foregroundStyle(.secondary)
             }
             .monospacedDigit()
-            .frame(width: 76, alignment: .trailing)
+            .frame(width: 72, alignment: .leading)
             VStack(alignment: .leading, spacing: 1) {
                 Text(event.title).font(.body.weight(.medium)).lineLimit(2)
                 Text(detail).font(.callout).foregroundStyle(.secondary).lineLimit(1)

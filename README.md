@@ -1,10 +1,20 @@
 # apnum
 
-A lightweight, open-source macOS menu bar hub for one person's day: alarms, timers, notes, calendar, reminders and Mac controls, built from the start so AI agents can use every feature as a tool.
+A lightweight, open-source Mac app for one person's day: alarms, timers, notes, calendar, reminders and Mac controls, built from the start so AI agents can use every feature as a tool. It runs as a normal windowed app with a glance in the menu bar, designed for macOS 26 and Liquid Glass.
+
+![Today, with the day drawn as the sky](docs/screenshots/today.png)
 
 An Android companion app will follow, bringing the phone's SMS, OTPs, calls, notifications, files, WhatsApp and screen to the Mac, and letting the phone control the Mac in return.
 
-> **Status:** early development. The Mac menu bar app works (alarms, timers, notes, calendar, reminders, Mac controls, 50 tools); the phone link and agent access come next.
+> **Status:** early development. The Mac app works (alarms, timers, notes, calendar, reminders, Mac controls, 50 tools); the phone link and agent access come next.
+
+| Alarms | Timers |
+|---|---|
+| ![Alarms](docs/screenshots/alarms.png) | ![Timers](docs/screenshots/timers.png) |
+| **Notes** | **Calendar** |
+| ![Notes](docs/screenshots/notes.png) | ![Calendar](docs/screenshots/calendar.png) |
+| **Reminders** | **Activity: every tool agents can use** |
+| ![Reminders](docs/screenshots/reminders.png) | ![Activity](docs/screenshots/activity.png) |
 
 ## Features
 
@@ -24,12 +34,13 @@ An Android companion app will follow, bringing the phone's SMS, OTPs, calls, not
 - **Permission tiers.** Tools are `read`, `write` or `dangerous`. Agents and the phone cannot run dangerous tools without approval on the Mac.
 - **Private by default.** Data stays on your Mac under `~/Library/Application Support/apnum`. The audit log never records tool inputs or outputs.
 - **Lightweight.** Native Swift, no third-party dependencies, no polling: the app sleeps until the next alarm or timer is due. Target: 0% idle CPU, under 30 MB memory.
+- **Native look.** System controls, your accent colour and Liquid Glass, with one signature: the Today screen paints the day as the sky. See [docs/design.md](docs/design.md).
 
 See [CLAUDE.md](CLAUDE.md) for the architecture and contributor conventions.
 
 ## Build
 
-Requires macOS 15 or later and Xcode.
+Requires macOS 26 or later and Xcode 26 or later.
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # if xcode-select points at the Command Line Tools
@@ -37,6 +48,8 @@ swift test
 scripts/bundle.sh          # creates build/Apnum.app
 open build/Apnum.app
 ```
+
+Try it with sample data, without touching your own: `open build/Apnum.app --env APNUM_DEMO=1 --env APNUM_HOME=/tmp/apnum-demo`. `scripts/snapshot.sh <screen> out.png [light|dark]` captures a screen in demo mode.
 
 Set `APNUM_SIGN_IDENTITY` to a code-signing identity to keep macOS permission grants across rebuilds.
 
