@@ -4,219 +4,261 @@ import SwiftUI
 
 private let weekOrder: [Weekday] = [.monday, .tuesday, .wednesday, .thursday, .friday, .saturday, .sunday]
 
-private func repeatSummary(_ days: Set<Weekday>) -> String {
-    if days.isEmpty { return "Once" }
-    if days.count == 7 { return "Every day" }
-    if days == [.monday, .tuesday, .wednesday, .thursday, .friday] { return "Weekdays" }
-    if days == [.saturday, .sunday] { return "Weekends" }
-    return weekOrder.filter(days.contains).map(\.shortName).joined(separator: ", ")
-}
-
-private func untilText(_ date: Date, now: Date = Date()) -> String {
-    let minutes = max(0, Int((date.timeIntervalSince(now) / 60).rounded(.up)))
-    let d = minutes / 1440, h = (minutes % 1440) / 60, m = minutes % 60
-    if d > 0 { return "in \(d) d \(h) h" }
-    if h > 0 { return "in \(h) h \(m) min" }
-    return "in \(m) min"
-}
-
 private enum AlarmEditing: Identifiable {
     case new
     case edit(Alarm)
+
     var id: String {
         switch self {
         case .new: "new"
-        case .edit(let a): a.id.uuidString
+        case .edit(let alarm): alarm.id.uuidString
         }
     }
 }
+
+// MARK: - Screen
 
 struct AlarmsView: View {
     @Environment(AppModel.self) private var model
     @State private var editing: AlarmEditing?
+    @State private var selection: UUID?
+
+    private var sorted: [Alarm] {
+        model.alarmList.sorted { ($0.hour, $0.minute) < ($1.hour, $1.minute) }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
-            if model.alarmSettings.mirrorToClockApp, let error = model.alarmMirrorError {
-                mirrorWarning(error)
-                Divider()
-            }
             if model.alarmList.isEmpty {
                 ContentUnavailableView {
                     Label("No alarms", systemImage: "alarm")
                 } description: {
-                    Text("Add an alarm to get woken up or reminded.")
+                    Text("Alarms ring on this Mac, and on your phone once it's paired.")
                 } actions: {
-                    Button("Add Alarm") { editing = .new }.buttonStyle(.borderedProminent)
+                    Button("New alarm") { editing = .new }
+                        .buttonStyle(.glassProminent)
+                        .controlSize(.large)
                 }
+                .frame(maxHeight: .infinity)
             } else {
-                List {
-                    ForEach(model.alarmList) { alarm in
-                        AlarmRow(alarm: alarm, onEdit: { editing = .edit(alarm) })
-                    }
-                }
-                .listStyle(.plain)
+                list
             }
         }
-        .sheet(item: $editing) { item in
-            switch item {
+        .navigationTitle("Alarms")
+        .navigationSubtitle(subtitle)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("New alarm", systemImage: "plus") { editing = .new }
+                    .keyboardShortcut("n", modifiers: .command)
+            }
+        }
+        .sheet(item: $editing) { target in
+            switch target {
             case .new: AlarmEditor(alarm: nil)
-            case .edit(let a): AlarmEditor(alarm: a)
+            case .edit(let alarm): AlarmEditor(alarm: alarm)
             }
         }
     }
 
-    private var header: some View {
-        HStack {
-            Group {
-                if let next = model.nextAlarm {
-                    TimelineView(.periodic(from: .now, by: 30)) { ctx in
-                        Text("Next: \(next.date.formatted(.dateTime.weekday(.abbreviated).hour(.twoDigits(amPM: .omitted)).minute())) · \(untilText(next.date, now: ctx.date))")
+    private var subtitle: String {
+        guard let next = model.nextAlarm else { return model.alarmList.isEmpty ? "" : "No alarm is on" }
+        return "Next \(ClockFormat.relative(to: next.date))"
+    }
+
+    private var list: some View {
+        List(selection: $selection) {
+            ForEach(sorted) { alarm in
+                AlarmRow(alarm: alarm)
+                    .tag(alarm.id)
+                    .contentShape(.rect)
+                    .onTapGesture {
+                        selection = alarm.id
+                        editing = .edit(alarm)
                     }
-                } else {
-                    Text("No upcoming alarm")
-                }
+                    .contextMenu {
+                        Button("Edit") { editing = .edit(alarm) }
+                        Divider()
+                        Button("Delete", role: .destructive) { delete(alarm) }
+                    }
+                    .listRowInsets(.init(top: 4, leading: 28, bottom: 4, trailing: 28))
             }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .monospacedDigit()
-            .lineLimit(1)
-            Spacer()
-            Button { editing = .new } label: { Image(systemName: "plus") }
-                .accessibilityLabel("Add alarm")
-                .help("Add alarm")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .onDeleteCommand {
+            if let id = selection, let alarm = model.alarmList.first(where: { $0.id == id }) { delete(alarm) }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if model.alarmSettings.mirrorToClockApp, model.alarmMirrorError != nil {
+                MirrorBanner()
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 8)
+            }
+        }
     }
 
-    private func mirrorWarning(_ error: String) -> some View {
-        HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-            Text("Clock app sync failed: \(error)")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(3)
-            Spacer()
-            Button("Retry") { Task { await model.run("alarm.mirror.sync") } }
-                .controlSize(.small)
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+    private func delete(_ alarm: Alarm) {
+        Task { await model.run("alarm.delete", ["id": .string(alarm.id.uuidString)]) }
+        if selection == alarm.id { selection = nil }
     }
 }
+
+// MARK: - Row
 
 private struct AlarmRow: View {
     @Environment(AppModel.self) private var model
     let alarm: Alarm
-    let onEdit: () -> Void
 
     var body: some View {
-        HStack {
+        HStack(spacing: 16) {
+            ClockText(hour: alarm.hour, minute: alarm.minute, size: 46, weight: .thin)
+                .frame(minWidth: 150, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
-                Text(alarm.timeText).font(.system(size: 30, weight: .light)).monospacedDigit()
-                HStack(spacing: 4) {
-                    if !alarm.label.isEmpty { Text(alarm.label); Text("·") }
-                    Text(repeatSummary(alarm.repeatDays))
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+                Text(alarm.label.isEmpty ? "Alarm" : alarm.label)
+                    .font(.body)
+                    .lineLimit(1)
+                Text(AlarmRepeat.summary(alarm.repeatDays))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
-            Spacer()
+            Spacer(minLength: 12)
             Toggle("Enabled", isOn: Binding(
                 get: { alarm.isEnabled },
                 set: { value in
-                    Task { await model.run("alarm.update", ["id": .string(alarm.id.uuidString), "isEnabled": .bool(value)]) }
+                    Task {
+                        await model.run("alarm.update", ["id": .string(alarm.id.uuidString), "isEnabled": .bool(value)])
+                    }
                 }))
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .controlSize(.small)
+            .toggleStyle(.switch)
+            .labelsHidden()
         }
-        .opacity(alarm.isEnabled ? 1 : 0.55)
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onEdit)
-        .contextMenu {
-            Button("Edit", action: onEdit)
-            Button("Delete", role: .destructive) { delete() }
-        }
-    }
-
-    private func delete() {
-        Task { await model.run("alarm.delete", ["id": .string(alarm.id.uuidString)]) }
+        .padding(.vertical, 6)
+        .opacity(alarm.isEnabled ? 1 : 0.5)
+        .animation(.easeOut(duration: 0.2), value: alarm.isEnabled)
+        .accessibilityElement(children: .contain)
     }
 }
+
+// MARK: - Mirror banner
+
+private struct MirrorBanner: View {
+    @Environment(AppModel.self) private var model
+    @State private var retrying = false
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            Text("Your alarms could not be copied to the Clock app, so they may not ring there.")
+                .font(.callout)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            Button("Try again") {
+                retrying = true
+                Task {
+                    await model.run("alarm.mirror.sync")
+                    retrying = false
+                }
+            }
+            .buttonStyle(.glass)
+            .disabled(retrying)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .glassEffect(.regular.tint(.orange.opacity(0.14)), in: .rect(cornerRadius: 16))
+        .frame(maxWidth: 760)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - Editor
 
 private struct AlarmEditor: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
-    let alarm: Alarm?
 
-    @State private var time = Date()
-    @State private var label = ""
-    @State private var days: Set<Weekday> = []
-    @State private var snooze = 9
-    @State private var loaded = false
+    let alarm: Alarm?
+    @State private var time: Date
+    @State private var label: String
+    @State private var days: Set<Weekday>
+    @State private var snooze: Int
+
+    init(alarm: Alarm?) {
+        self.alarm = alarm
+        let cal = Calendar.current
+        let base = cal.date(bySettingHour: alarm?.hour ?? 7, minute: alarm?.minute ?? 0, second: 0, of: .now) ?? .now
+        _time = State(initialValue: base)
+        _label = State(initialValue: alarm?.label ?? "")
+        _days = State(initialValue: alarm?.repeatDays ?? [])
+        _snooze = State(initialValue: alarm?.snoozeMinutes ?? 9)
+    }
+
+    private var snoozeOptions: [Int] {
+        Array(Set([0, 5, 9, 10, 15, snooze])).sorted()
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(alarm == nil ? "New Alarm" : "Edit Alarm").font(.headline)
-            HStack {
-                Spacer()
-                DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                    .datePickerStyle(.stepperField)
-                    .scaleEffect(1.3)
-                    .padding(.vertical, 6)
-                Spacer()
-            }
-            TextField("Label", text: $label).textFieldStyle(.roundedBorder)
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Repeat").font(.caption).foregroundStyle(.secondary)
-                HStack(spacing: 4) {
-                    ForEach(weekOrder, id: \.self) { day in
-                        Toggle(day.shortName, isOn: Binding(
-                            get: { days.contains(day) },
-                            set: { if $0 { days.insert(day) } else { days.remove(day) } }))
-                            .toggleStyle(.button)
-                            .controlSize(.small)
+        VStack(alignment: .leading, spacing: 20) {
+            ClockText(time, size: 64, weight: .thin)
+                .frame(maxWidth: .infinity)
+
+            DatePicker("Time", selection: $time, displayedComponents: .hourAndMinute)
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
+
+            TextField("Label", text: $label, prompt: Text("Alarm"))
+                .textFieldStyle(.roundedBorder)
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Repeat").font(.subheadline).foregroundStyle(.secondary)
+                GlassEffectContainer(spacing: 6) {
+                    HStack(spacing: 6) {
+                        ForEach(weekOrder, id: \.self) { day in
+                            let on = days.contains(day)
+                            Button {
+                                if on { days.remove(day) } else { days.insert(day) }
+                            } label: {
+                                Text(day.shortName)
+                                    .font(.callout.weight(on ? .semibold : .regular))
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glass)
+                            .tint(on ? Color.accentColor : nil)
+                            .accessibilityAddTraits(on ? .isSelected : [])
+                        }
                     }
                 }
-                Text(repeatSummary(days)).font(.caption).foregroundStyle(.secondary)
+                Text(AlarmRepeat.summary(days))
+                    .font(.callout).foregroundStyle(.secondary)
             }
-            Stepper(value: $snooze, in: 0...180) {
-                Text(snooze == 0 ? "Snooze: off" : "Snooze: \(snooze) min").monospacedDigit()
+
+            Picker("Snooze", selection: $snooze) {
+                ForEach(snoozeOptions, id: \.self) { Text($0 == 0 ? "Off" : "\($0) min").tag($0) }
             }
+
             HStack {
+                if alarm != nil {
+                    Button("Delete alarm", role: .destructive, action: delete)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.red)
+                }
                 Spacer()
-                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Save") { save() }.keyboardShortcut(.defaultAction)
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.glass)
+                    .keyboardShortcut(.cancelAction)
+                Button("Save", action: save)
+                    .buttonStyle(.glassProminent)
+                    .keyboardShortcut(.defaultAction)
             }
+            .controlSize(.large)
         }
-        .padding(16)
-        .frame(width: 340)
-        .onAppear {
-            guard !loaded else { return }
-            loaded = true
-            if let alarm {
-                time = Calendar.current.date(bySettingHour: alarm.hour, minute: alarm.minute, second: 0, of: Date()) ?? Date()
-                label = alarm.label
-                days = alarm.repeatDays
-                snooze = alarm.snoozeMinutes
-            } else {
-                time = Calendar.current.date(bySettingHour: 7, minute: 0, second: 0, of: Date()) ?? Date()
-            }
-        }
+        .padding(24)
+        .frame(width: 420)
     }
 
     private func save() {
-        let comps = Calendar.current.dateComponents([.hour, .minute], from: time)
+        let c = Calendar.current.dateComponents([.hour, .minute], from: time)
         var input: [String: JSONValue] = [
-            "hour": .number(Double(comps.hour ?? 7)),
-            "minute": .number(Double(comps.minute ?? 0)),
-            "label": .string(label),
+            "hour": .number(Double(c.hour ?? 0)), "minute": .number(Double(c.minute ?? 0)),
+            "label": .string(label.trimmingCharacters(in: .whitespaces)),
             "repeatDays": .array(weekOrder.filter(days.contains).map { .string($0.wireName) }),
             "snoozeMinutes": .number(Double(snooze)),
         ]
@@ -227,9 +269,13 @@ private struct AlarmEditor: View {
         } else {
             tool = "alarm.create"
         }
-        let payload = JSONValue.object(input)
-        Task {
-            if await model.run(tool, payload) != nil { dismiss() }
-        }
+        Task { await model.run(tool, .object(input)) }
+        dismiss()
+    }
+
+    private func delete() {
+        guard let alarm else { return }
+        Task { await model.run("alarm.delete", ["id": .string(alarm.id.uuidString)]) }
+        dismiss()
     }
 }
