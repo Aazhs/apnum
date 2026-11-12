@@ -3,7 +3,7 @@
 #
 #   scripts/snapshot.sh <section> <out.png> [light|dark] [width] [height]
 #
-# section: today, alarms, timers, calendar, reminders, notes, activity
+# section: today, alarms, timers, calendar, reminders, notes, activity, or glance (menu bar window)
 set -eu
 cd "$(dirname "$0")/.."
 SECTION="${1:-today}"; OUT="${2:-build/snapshot.png}"; LOOK="${3:-light}"
@@ -19,7 +19,8 @@ cp -R build/Apnum.app "$RUN_APP"
 # Default window size for this run.
 defaults write dev.apnum.mac "NSWindow Frame main" "100 100 $W $H 0 0 3000 2000" 2>/dev/null || true
 
-open -g -n -F "$RUN_APP" --env APNUM_DEMO=1 --env APNUM_HOME="$HOME_DIR" --env APNUM_SECTION="$SECTION" --env APNUM_APPEARANCE="$LOOK"
+PREVIEW=""; [ "$SECTION" = glance ] && PREVIEW=glance && SECTION=today
+open -g -n -F "$RUN_APP" --env APNUM_PREVIEW="$PREVIEW" --env APNUM_DEMO=1 --env APNUM_HOME="$HOME_DIR" --env APNUM_SECTION="$SECTION" --env APNUM_APPEARANCE="$LOOK"
 PID=""
 for _ in $(seq 1 40); do
   PID="$(pgrep -n -f "$RUN_APP/Contents/MacOS/Apnum" || true)"

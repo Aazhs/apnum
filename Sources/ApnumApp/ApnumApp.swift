@@ -118,6 +118,18 @@ struct MainView: View {
 
     @ViewBuilder
     private func detail(for section: AppSection) -> some View {
+        if ProcessInfo.processInfo.environment["APNUM_PREVIEW"] == "glance" {
+            // Debug only (scripts/snapshot.sh glance): the menu bar window can't be captured directly.
+            MenuBarGlance()
+                .background(.background, in: .rect(cornerRadius: 16))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            sectionView(section)
+        }
+    }
+
+    @ViewBuilder
+    private func sectionView(_ section: AppSection) -> some View {
         switch section {
         case .today: TodayView()
         case .alarms: AlarmsView()

@@ -327,7 +327,7 @@ struct DayRibbon: View {
                 GlassEffectContainer(spacing: 6) {
                     ZStack(alignment: .topLeading) {
                         ForEach(lanes) { placed in
-                            eventCapsule(placed, x: x, width: width)
+                            eventCapsule(placed, x: x, width: width, height: height)
                         }
                         ForEach(layout(markers, x: x, width: width)) { placed in
                             markerView(placed.marker, iconOnly: placed.iconOnly)
@@ -381,11 +381,11 @@ struct DayRibbon: View {
         return placed
     }
 
-    private func eventCapsule(_ placed: PlacedEvent, x: (Date) -> CGFloat, width: CGFloat) -> some View {
+    private func eventCapsule(_ placed: PlacedEvent, x: (Date) -> CGFloat, width: CGFloat, height: CGFloat) -> some View {
         let start = x(placed.event.start), end = x(placed.event.end)
         let w = max(end - start, compact ? 6 : 14)
-        let h: CGFloat = compact ? 8 : 28
-        let y: CGFloat = compact ? 6 + CGFloat(placed.lane) * 10 : 64 + CGFloat(placed.lane) * 36
+        let h: CGFloat = compact ? 3 : 28
+        let y: CGFloat = compact ? height - 6 - CGFloat(placed.lane) * 5 : 64 + CGFloat(placed.lane) * 36
         let tint = Color(hex: placed.event.colorHex) ?? .accentColor
         let help = "\(placed.event.title), \(ClockFormat.string(placed.event.start)) to \(ClockFormat.string(placed.event.end))"
         return Group {
