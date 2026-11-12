@@ -30,6 +30,15 @@ struct AlarmsView: View {
     }
 
     var body: some View {
+        if ProcessInfo.processInfo.environment["APNUM_PREVIEW"] == "alarm-editor" {
+            // Debug only (scripts/snapshot.sh alarms:alarm-editor): sheets can't be captured.
+            AlarmEditor(alarm: nil).frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            screen
+        }
+    }
+
+    private var screen: some View {
         VStack(spacing: 0) {
             if model.alarmSettings.mirrorToClockApp, model.alarmMirrorError != nil {
                 AlarmsMirrorBanner()

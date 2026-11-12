@@ -2,7 +2,9 @@
 
 A lightweight, open-source Mac app for one person's day: alarms, timers, notes, calendar, reminders and Mac controls, built from the start so AI agents can use every feature as a tool. It runs as a normal windowed app with a glance in the menu bar, designed for macOS 26 and Liquid Glass.
 
-![Today, with the day drawn as the sky](docs/screenshots/today.png)
+![Today: the page is the current sky, with your day on glass](docs/screenshots/today.png)
+
+![Today at night](docs/screenshots/today-dark.png)
 
 An Android companion app will follow, bringing the phone's SMS, OTPs, calls, notifications, files, WhatsApp and screen to the Mac, and letting the phone control the Mac in return.
 
@@ -11,19 +13,21 @@ An Android companion app will follow, bringing the phone's SMS, OTPs, calls, not
 | Alarms | Timers |
 |---|---|
 | ![Alarms](docs/screenshots/alarms.png) | ![Timers](docs/screenshots/timers.png) |
-| **Notes** | **Calendar** |
-| ![Notes](docs/screenshots/notes.png) | ![Calendar](docs/screenshots/calendar.png) |
-| **Reminders** | **Activity: every tool agents can use** |
-| ![Reminders](docs/screenshots/reminders.png) | ![Activity](docs/screenshots/activity.png) |
+| **Stopwatch** | **Calendar** |
+| ![Stopwatch](docs/screenshots/stopwatch.png) | ![Calendar](docs/screenshots/calendar.png) |
+| **Notes** | **Reminders** |
+| ![Notes](docs/screenshots/notes.png) | ![Reminders](docs/screenshots/reminders.png) |
+| **Activity: every tool agents can use** | |
+| ![Activity](docs/screenshots/activity.png) | |
 
 ## Features
 
 | Area | Mac app | Phone (planned) |
 |---|---|---|
 | Alarms | apnum's own alarm clock; optional mirror into the macOS Clock app via Shortcuts | Full alarm clock in the companion app, synced both ways |
-| Timers | Countdown timers and a stopwatch | Synced |
+| Timers and stopwatch | Modelled on the macOS Clock app: recents, typed durations, rings, laps | Synced |
 | Notes | Markdown files you own, with tags and search | Notes screen in the companion app, synced |
-| Calendar and Reminders | Your real Apple Calendar and Reminders (iCloud, Google and other accounts included) | Through the same Google account |
+| Calendar and Reminders | Your real Apple Calendar (Day, Week, Month) and Reminders, iCloud and Google accounts included | Through the same Google account |
 | Mac control | Volume, media keys, clipboard, lock, sleep, battery, open apps, run Shortcuts | Control the Mac from the phone |
 | Phone | — | SMS, OTP, call control, notifications, files, WhatsApp, screen mirroring (scrcpy) |
 | Agents | Every feature is a tool with a JSON schema | MCP server for Claude Code |

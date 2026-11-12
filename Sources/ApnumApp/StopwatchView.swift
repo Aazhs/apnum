@@ -29,6 +29,8 @@ struct StopwatchView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            // With no laps, centre the stopwatch in the window like the Clock app.
+            if watch.laps.isEmpty && !watch.isRunning { Spacer(minLength: 0) }
             VStack(spacing: 26) {
                 readout
                 HStack(spacing: 20) {

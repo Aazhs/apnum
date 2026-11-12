@@ -3,7 +3,8 @@
 #
 #   scripts/snapshot.sh <section> <out.png> [light|dark] [width] [height]
 #
-# section: today, alarms, timers, calendar, reminders, notes, activity, or glance (menu bar window)
+# section: today, alarms, stopwatch, timers, calendar, reminders, notes, activity, glance (menu bar window),
+#          or alarms:alarm-editor (the New alarm sheet)
 set -eu
 cd "$(dirname "$0")/.."
 SECTION="${1:-today}"; OUT="${2:-build/snapshot.png}"; LOOK="${3:-light}"
@@ -20,6 +21,7 @@ cp -R build/Apnum.app "$RUN_APP"
 defaults write dev.apnum.mac "NSWindow Frame main" "100 100 $W $H 0 0 3000 2000" 2>/dev/null || true
 
 PREVIEW=""; [ "$SECTION" = glance ] && PREVIEW=glance && SECTION=today
+case "$SECTION" in *:*) PREVIEW="${SECTION#*:}"; SECTION="${SECTION%%:*}";; esac
 open -g -n -F "$RUN_APP" --env APNUM_PREVIEW="$PREVIEW" --env APNUM_DEMO=1 --env APNUM_HOME="$HOME_DIR" --env APNUM_SECTION="$SECTION" --env APNUM_APPEARANCE="$LOOK" --env APNUM_SKY_HOUR="${APNUM_SKY_HOUR:-}"
 PID=""
 for _ in $(seq 1 40); do
