@@ -58,6 +58,7 @@ final class SkyCatalog: Sendable {
         var id: String
         var name: String
         var lines: [[SIMD3<Double>]]
+        var wiki: String?
     }
 
     let stars: [Star]
@@ -69,6 +70,7 @@ final class SkyCatalog: Sendable {
         var id: String
         var name: String
         var lines: [[[Double]]]
+        var wiki: String?
     }
 
     private init() {
@@ -101,7 +103,8 @@ final class SkyCatalog: Sendable {
                 id: raw.id, name: raw.name,
                 lines: raw.lines.map { line in
                     line.compactMap { $0.count >= 2 ? SkyFrame.unitVector(ra: $0[0], dec: $0[1]) : nil }
-                })
+                },
+                wiki: raw.wiki)
         }
     }
 
@@ -132,7 +135,7 @@ final class SkyCatalog: Sendable {
                 }
                 if run.count > 1 { lines.append(run) }
             }
-            if !lines.isEmpty { out.append(ConstellationFigure(id: figure.id, name: figure.name, lines: lines)) }
+            if !lines.isEmpty { out.append(ConstellationFigure(id: figure.id, name: figure.name, lines: lines, wiki: figure.wiki)) }
         }
         return out
     }

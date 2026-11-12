@@ -33,3 +33,12 @@ Sentence case, plain verbs, the user's vocabulary. Buttons say what happens ("Ne
 ## Checking your work
 
 `scripts/snapshot.sh <section> <out.png> [light|dark] [width] [height]` launches the app in demo mode (sample data, throwaway data folder) in the background, captures only its window and quits. Sections: `today alarms stopwatch timers calendar reminders notes activity glance`, plus `alarms:alarm-editor`. `APNUM_SKY_TIME=18:05` previews the sky at that time. Look at the screenshot, critique it against this document, fix, and capture again.
+
+## Easter eggs
+
+The pixel scene has a few hidden extras, ported from aarshj.me. None has a hint in the UI.
+
+- **Constellations.** Hold Shift over the sky at night to draw every visible stick figure as dotted lines; point near one to highlight it and see its name, Shift-click to open its Wikipedia article. `APNUM_SKY_DEBUG=constellations` forces the overlay on for screenshots.
+- **Hover names.** Pointing at a planet or one of the named bright stars shows its name in a small pixel label.
+- **Firefly game.** Click the sky once, then type up up down down left right left right B A. Catch 5 wandering orbs in 30 seconds by clicking where the character should walk; the best score is kept in the `apnumFireflyBest` default.
+- **Horror mode.** Between 2:00 and 3:59 local time, on about one launch in 50: a drained red palette, red fireflies, a flickering lamp, glitch slices (not under Reduce Motion) and whispers. `APNUM_HORROR=1` forces it.

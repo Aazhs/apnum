@@ -134,7 +134,7 @@ extension PixelRenderer {
                 let need = pl.magnitude < -3 ? 0.04 : 0.15
                 guard night >= need else { continue }
                 let a = min(1, (night - need) * 3 + 0.4) * min(1, p.alt / 6) * clear
-                planets.append(Planet(x: Int(p.x.rounded()), y: Int(p.y.rounded()), a: a, color: pl.color.packed, mag: pl.magnitude))
+                planets.append(Planet(x: Int(p.x.rounded()), y: Int(p.y.rounded()), a: a, color: pl.color.packed, mag: pl.magnitude, name: pl.name))
             }
         }
         for s in scene.stars where s.magnitude <= limit {
@@ -149,7 +149,7 @@ extension PixelRenderer {
                 // Scintillation grows with the air the light crosses; about a third of stars visibly twinkle.
                 tw: pixelHash(key1, key2) < 0.35 ? 0.18 + 0.5 * pow(1 - p.alt / skyTopAltitude, 2) : 0.04,
                 f1: 2.1 + pixelHash(key2, key1) * 3.2, f2: 5.3 + pixelHash(key1 + 1, key2) * 4.1,
-                p: pixelHash(key2 + 2, key1) * 100))
+                p: pixelHash(key2 + 2, key1) * 100, name: s.name))
         }
     }
 

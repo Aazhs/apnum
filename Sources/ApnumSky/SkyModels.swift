@@ -183,10 +183,13 @@ public struct ConstellationFigure: Sendable, Equatable {
     public var name: String
     /// Polylines of stick-figure vertices.
     public var lines: [[HorizontalPosition]]
-    public init(id: String, name: String, lines: [[HorizontalPosition]]) {
+    /// Wikipedia article title (the part after `/wiki/`), when known.
+    public var wiki: String?
+    public init(id: String, name: String, lines: [[HorizontalPosition]], wiki: String? = nil) {
         self.id = id
         self.name = name
         self.lines = lines
+        self.wiki = wiki
     }
 }
 

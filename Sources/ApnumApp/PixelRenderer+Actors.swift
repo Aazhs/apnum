@@ -142,7 +142,7 @@ extension PixelRenderer {
     func drawFlies() {
         let dark = min(1, night * 1.5) * (1 - wet * 0.8)
         guard dark > 0.01 else { return }
-        let px = RGB(hex: "#ffe9a8").packed
+        let px = RGB(hex: horror ? "#ff5a4f" : "#ffe9a8").packed
         for f in flies {
             let flicker = 0.45 + 0.55 * abs(sin(time * 3 + f.p))
             frame.plot(Int(f.x.rounded()), Int(f.y.rounded()), px, Int((min(1, dark * flicker) * 255).rounded()))
@@ -151,7 +151,7 @@ extension PixelRenderer {
 
     // MARK: Character
 
-    private func standUp() {
+    func standUp() {
         player.sitting = false
         player.goSit = false
     }
@@ -192,17 +192,20 @@ extension PixelRenderer {
                 dir = dx > 0 ? 1 : -1
             }
         } else if t > player.wanderUntil {
-            // Now and then, wander over to the bench for a rest.
-            if let seat = pixelBenchSeat(propItems, groundY: groundY), t > userControlUntil, random.unit() < 0.25 {
+            if horror {
+                // Trapped: drifts to the edge of the screen and stays there.
+                player.target = random.unit() < 0.5 ? 2 : Double(W - 10)
+                player.goSit = false
+            } else if let seat = pixelBenchSeat(propItems, groundY: groundY), t > userControlUntil, random.unit() < 0.25 {
                 player.target = Double(seat.x)
                 player.goSit = true
             } else {
                 player.target = random.unit() < 0.5 ? nil : 8 + random.unit() * Double(W - 20)
                 player.goSit = false
             }
-            player.wanderUntil = t + 2.5 + random.unit() * 4
+            player.wanderUntil = t + (horror ? 12 : 2.5) + random.unit() * (horror ? 8 : 4)
         }
-        player.vx = dir * 34
+        player.vx = dir * (horror ? 12 : 34)
         if dir != 0 { player.facing = dir }
         player.x = max(2, min(Double(W - 10), player.x + player.vx * dt))
         player.vy += 220 * dt
@@ -266,14 +269,17 @@ extension PixelRenderer {
     func hover(point: CGPoint?, size: CGSize) {
         guard let point, size.width > 0, size.height > 0 else {
             pointerActive = false
+            updateHover()
             return
         }
         pointerX = min(max(Double(point.x / size.width), 0), 1)
         pointerY = min(max(Double(point.y / size.height), 0), 1)
         pointerActive = true
+        updateHover()
     }
 
-    private func say(_ text: String, seconds: Double = 3) {
+    func say(_ text: String, seconds: Double = 3, red: Bool = false) {
+        horrorState.red = red
         sayText = text
         sayUntil = time + seconds
     }

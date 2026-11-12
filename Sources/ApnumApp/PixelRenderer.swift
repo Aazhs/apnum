@@ -30,6 +30,7 @@ final class PixelRenderer {
         var stars: Int, planets: Int, milky: Int
         var blood: Int
         var supermoon: Bool
+        var horror = false
     }
 
     struct Star {
@@ -38,6 +39,7 @@ final class PixelRenderer {
         var color: UInt32
         var big: Bool
         var tw: Double, f1: Double, f2: Double, p: Double
+        var name: String? = nil
     }
 
     struct Planet {
@@ -45,6 +47,7 @@ final class PixelRenderer {
         var a: Double
         var color: UInt32
         var mag: Double
+        var name = ""
     }
 
     struct Meteor {
@@ -142,6 +145,17 @@ final class PixelRenderer {
     var userControlUntil = 0.0
     var goLamp = false
 
+    // Easter eggs (see PixelRenderer+Extras.swift)
+    var shiftHeld = false
+    var debugConstellations = ProcessInfo.processInfo.environment["APNUM_SKY_DEBUG"] == "constellations"
+    var constellations: [ProjectedConstellation] = []
+    var hoverConstellation: Int?
+    var tip: (text: String, x: Double, y: Double)?
+    var game = FireflyGame()
+    var horror = false
+    var horrorChecked = -1
+    var horrorState = HorrorState()
+
     // Interaction
     var pointerX = 0.5
     var pointerY = 0.4
@@ -161,7 +175,8 @@ final class PixelRenderer {
         let w = max(80, Int((size.width / CGFloat(scale)).rounded(.up)))
         let h = max(60, Int((size.height / CGFloat(scale)).rounded(.up)))
         scene = newScene
-        let print = Self.fingerprint(of: newScene, width: w, height: h)
+        refreshHorror(now: now)
+        let print = Self.fingerprint(of: newScene, width: w, height: h, horror: horror)
         if w != W || h != H {
             W = w
             H = h
@@ -184,7 +199,7 @@ final class PixelRenderer {
         return Output(image: image, width: W, height: H)
     }
 
-    static func fingerprint(of s: SkyScene, width: Int, height: Int) -> Fingerprint {
+    static func fingerprint(of s: SkyScene, width: Int, height: Int, horror: Bool = false) -> Fingerprint {
         func q(_ rad: Double) -> Int { Int((rad * 180 / .pi * 10).rounded()) }
         return Fingerprint(
             width: width, height: height, palette: s.palette,
@@ -192,7 +207,7 @@ final class PixelRenderer {
             phase: Int((s.moonPhase * 1000).rounded()), kind: s.weather.kind,
             cloud: Int((s.weather.cloudCover * 100).rounded()), wind: Int(s.weather.windKmh.rounded()),
             stars: s.stars.count, planets: s.planets.count, milky: s.milkyWay.count,
-            blood: Int((s.bloodMoon * 100).rounded()), supermoon: s.supermoon)
+            blood: Int((s.bloodMoon * 100).rounded()), supermoon: s.supermoon, horror: horror)
     }
 
     // MARK: Build (size changes)
@@ -228,7 +243,7 @@ final class PixelRenderer {
     // MARK: Bake (scene changes)
 
     private func bake() {
-        guard let scene else { return }
+        guard let scene = tintedScene else { return }
         palette = scene.palette
         night = scene.night
         overcast = scene.overcast
@@ -243,6 +258,7 @@ final class PixelRenderer {
 
         bakeSkyLayer(scene)
         placeStars(scene)
+        placeConstellations(scene)
         makeClouds()
         makeRain()
         bakeMountains()
@@ -252,6 +268,7 @@ final class PixelRenderer {
             let p = skyXY(r)
             return (p.x, p.y)
         }
+        updateHover()
     }
 
     private func bakeMountains() {
@@ -269,7 +286,7 @@ final class PixelRenderer {
 
     /// Ground strip and scenery, lit for the time of day and weather.
     func bakeGround() {
-        guard let scene else { return }
+        guard let scene = tintedScene else { return }
         var layer = PixelLayer(width: W, height: H)
         let gy = groundY
         let ground = palette.ground.packed
@@ -356,6 +373,7 @@ final class PixelRenderer {
     private func composite() {
         frame.data = skyLayer.data
         drawStars()
+        drawConstellations()
         for c in clouds { c.image.blit(into: &frame, ox: Int(c.x.rounded()), oy: c.y) }
         drawMeteors()
         drawRange(0)
@@ -367,7 +385,9 @@ final class PixelRenderer {
         groundLayer.blit(into: &frame, ox: 0, oy: 0)
         drawPlayer()
         drawFlies()
+        drawGame()
         drawRain()
+        drawHorror()
     }
 
     private func drawRange(_ i: Int) {
@@ -396,6 +416,8 @@ final class PixelRenderer {
             if clouds[i].x > Double(W + 10) { clouds[i].x = Double(-clouds[i].w - 10) }
         }
         updateMeteors(dt)
+        updateGame(dt)
+        updateHorror(dt)
         updatePlayer(dt)
         if night > 0.01 { updateFlies(dt) }
         updateRain(dt)

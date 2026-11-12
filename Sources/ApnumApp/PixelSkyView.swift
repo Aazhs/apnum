@@ -58,6 +58,10 @@ private final class PixelSkyNSView: NSView {
     private let renderer = PixelRenderer()
     private let imageLayer = CALayer()
     private let bubble = BubbleLabel(labelWithString: "")
+    private let tipLabel = BubbleLabel(labelWithString: "")
+    private let hud = BubbleLabel(labelWithString: "")
+    private var konami = KonamiDetector()
+    private var shiftMonitor: Any?
     private var scene: SkyScene?
     private var animated = true
     private var link: CADisplayLink?
@@ -93,9 +97,26 @@ private final class PixelSkyNSView: NSView {
         bubble.layer?.cornerRadius = 3
         bubble.isHidden = true
         addSubview(bubble)
+
+        styleSmall(tipLabel, text: NSColor(red: 0.16, green: 0.11, blue: 0.18, alpha: 1), fill: NSColor(red: 1, green: 0.97, blue: 0.9, alpha: 0.95))
+        styleSmall(hud, text: NSColor(red: 1, green: 0.84, blue: 0.48, alpha: 1), fill: NSColor(red: 0.08, green: 0.06, blue: 0.12, alpha: 0.75))
+        addSubview(tipLabel)
+        addSubview(hud)
     }
 
     required init?(coder: NSCoder) { fatalError("not used") }
+
+    private func styleSmall(_ label: NSTextField, text: NSColor, fill: NSColor) {
+        label.font = .monospacedSystemFont(ofSize: 10, weight: .semibold)
+        label.textColor = text
+        label.alignment = .center
+        label.wantsLayer = true
+        label.layer?.backgroundColor = fill.cgColor
+        label.layer?.borderColor = text.withAlphaComponent(0.85).cgColor
+        label.layer?.borderWidth = 1
+        label.layer?.cornerRadius = 2
+        label.isHidden = true
+    }
 
     func configure(scene: SkyScene, animated: Bool) {
         self.scene = scene
@@ -109,12 +130,22 @@ private final class PixelSkyNSView: NSView {
         removeObservers()
     }
 
+    private func removeShiftMonitor() {
+        if let shiftMonitor { NSEvent.removeMonitor(shiftMonitor) }
+        shiftMonitor = nil
+    }
+
     // MARK: Running state
 
     private var shouldRun: Bool {
         guard animated, let window, !isHiddenOrHasHiddenAncestor else { return false }
         if ignoreFocus { return true }
         return window.isKeyWindow && window.occlusionState.contains(.visible) && !window.isMiniaturized
+    }
+
+    private func windowStateChanged() {
+        if window?.isKeyWindow != true { setShift(false) }
+        refreshRunning()
     }
 
     private func refreshRunning() {
@@ -137,6 +168,7 @@ private final class PixelSkyNSView: NSView {
     @objc private func tick() { drawFrame() }
 
     private func removeObservers() {
+        removeShiftMonitor()
         observers.forEach { NotificationCenter.default.removeObserver($0) }
         observers = []
     }
@@ -152,9 +184,15 @@ private final class PixelSkyNSView: NSView {
             NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification, NSWindow.didChangeOcclusionStateNotification,
             NSWindow.didMiniaturizeNotification, NSWindow.didDeminiaturizeNotification,
         ]
+        shiftMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] event in
+            MainActor.assumeIsolated {
+                if let self, event.window === self.window { self.setShift(event.modifierFlags.contains(.shift)) }
+            }
+            return event
+        }
         observers = names.map { name in
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refreshRunning() }
+                MainActor.assumeIsolated { self?.windowStateChanged() }
             }
         }
         refreshRunning()
@@ -188,6 +226,36 @@ private final class PixelSkyNSView: NSView {
         imageLayer.contents = out.image
         CATransaction.commit()
         updateBubble()
+        updateTip()
+    }
+
+    private func setShift(_ held: Bool) {
+        guard held != renderer.shiftHeld else { return }
+        renderer.setShift(held)
+        if link == nil { drawFrame() }
+    }
+
+    private func updateTip() {
+        if let t = renderer.tip {
+            tipLabel.stringValue = t.text
+            tipLabel.sizeToFit()
+            let w = tipLabel.frame.width + 10, h = tipLabel.frame.height + 4
+            let x = min(max(CGFloat(t.x) + 12, 2), max(2, bounds.width - w - 2))
+            let y = min(max(bounds.height - CGFloat(t.y) + 10 - h, 2), max(2, bounds.height - h - 2))
+            tipLabel.frame = CGRect(x: x, y: y, width: w, height: h)
+            tipLabel.isHidden = false
+        } else {
+            tipLabel.isHidden = true
+        }
+        if let text = renderer.hudText() {
+            hud.stringValue = text
+            hud.sizeToFit()
+            let w = hud.frame.width + 12, h = hud.frame.height + 6
+            hud.frame = CGRect(x: 8, y: bounds.height - h - 8, width: w, height: h)
+            hud.isHidden = false
+        } else {
+            hud.isHidden = true
+        }
     }
 
     private func updateBubble() {
@@ -195,6 +263,10 @@ private final class PixelSkyNSView: NSView {
             bubble.isHidden = true
             return
         }
+        let red = renderer.horrorState.red
+        bubble.textColor = red ? NSColor(red: 1, green: 0.35, blue: 0.31, alpha: 1) : NSColor(red: 0.16, green: 0.11, blue: 0.18, alpha: 1)
+        bubble.layer?.backgroundColor = (red ? NSColor(red: 0.06, green: 0.02, blue: 0.05, alpha: 1) : NSColor(red: 1, green: 0.97, blue: 0.9, alpha: 1)).cgColor
+        bubble.layer?.borderColor = (red ? NSColor(red: 0.6, green: 0.12, blue: 0.12, alpha: 1) : NSColor(red: 0.16, green: 0.11, blue: 0.18, alpha: 1)).cgColor
         bubble.stringValue = b.text
         bubble.sizeToFit()
         var size = bubble.frame.size
@@ -221,13 +293,59 @@ private final class PixelSkyNSView: NSView {
         return CGPoint(x: p.x, y: bounds.height - p.y)
     }
 
-    override func mouseMoved(with event: NSEvent) { renderer.hover(point: topLeft(event), size: bounds.size) }
-    override func mouseDragged(with event: NSEvent) { renderer.hover(point: topLeft(event), size: bounds.size) }
-    override func mouseExited(with event: NSEvent) { renderer.hover(point: nil, size: bounds.size) }
+    private func pointerMoved(_ point: CGPoint?) {
+        renderer.hover(point: point, size: bounds.size)
+        // While paused nothing redraws on its own; only the overlays need it.
+        if link == nil, renderer.overlayOn || renderer.tip != nil || !tipLabel.isHidden { drawFrame() }
+    }
+
+    override func mouseMoved(with event: NSEvent) { pointerMoved(topLeft(event)) }
+    override func mouseDragged(with event: NSEvent) { pointerMoved(topLeft(event)) }
+    override func mouseExited(with event: NSEvent) { pointerMoved(nil) }
 
     override func mouseDown(with event: NSEvent) {
+        // Clicking the scene is what lets it hear the Konami keys; nothing else ever pulls focus here.
+        window?.makeFirstResponder(self)
+        renderer.hover(point: topLeft(event), size: bounds.size)
+        if event.modifierFlags.contains(.shift), let url = renderer.hoveredConstellationURL() {
+            NSWorkspace.shared.open(url)
+            return
+        }
         renderer.tap(point: topLeft(event))
         drawFrame()
+    }
+
+    // MARK: Keyboard (easter eggs)
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func flagsChanged(with event: NSEvent) {
+        setShift(event.modifierFlags.contains(.shift))
+        super.flagsChanged(with: event)
+    }
+
+    override func keyDown(with event: NSEvent) {
+        guard !event.modifierFlags.contains(.command), let key = konamiKey(event) else {
+            konami = KonamiDetector()
+            super.keyDown(with: event)
+            return
+        }
+        if konami.feed(key), shouldRun { renderer.startGame() }
+    }
+
+    private func konamiKey(_ event: NSEvent) -> KonamiDetector.Key? {
+        switch event.keyCode {
+        case 126: return .up
+        case 125: return .down
+        case 123: return .left
+        case 124: return .right
+        default: break
+        }
+        switch event.charactersIgnoringModifiers?.lowercased() {
+        case "b": return .b
+        case "a": return .a
+        default: return nil
+        }
     }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
