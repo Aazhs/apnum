@@ -125,6 +125,8 @@ struct MainView: View {
             MenuBarGlance()
                 .background(.background, in: .rect(cornerRadius: 16))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if ProcessInfo.processInfo.environment["APNUM_PREVIEW"] == "sky" {
+            PixelSkyView.debugPreview()
         } else {
             sectionView(section)
         }
