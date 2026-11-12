@@ -60,25 +60,3 @@ public protocol ShortcutRunning: Sendable {
     func run(_ name: String, input: Data?) async throws -> Data
 }
 
-/// Calls a handler about once a second. Services that fire at a time
-/// (alarms, timers) expose `tick(now:)` and are driven by this, which keeps
-/// them testable with fixed dates.
-public final class Ticker: Sendable {
-    private let task = Mutex<Task<Void, Never>?>(nil)
-
-    public init() {}
-
-    public func start(interval: Duration = .seconds(1), _ handler: @escaping @Sendable (Date) async -> Void) {
-        let newTask = Task {
-            while !Task.isCancelled {
-                await handler(Date())
-                try? await Task.sleep(for: interval)
-            }
-        }
-        task.withLock { $0?.cancel(); $0 = newTask }
-    }
-
-    public func stop() { task.withLock { $0?.cancel(); $0 = nil } }
-
-    deinit { task.withLock { $0?.cancel() } }
-}

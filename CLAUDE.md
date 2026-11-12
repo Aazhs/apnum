@@ -16,7 +16,7 @@ scripts/bundle.sh                    # builds build/Apnum.app (needed for Calend
 
 ## Architecture
 
-- `ApnumCore` — no AppKit/SwiftUI. Tool protocol, `ToolRegistry`, `PermissionPolicy`, `AuditLog`, `ChangeFeed`, `JSONFileStore`, `AppPaths`, `SyncRecord`, and platform protocols (`Ringer`, `ShortcutRunning`, `Ticker`).
+- `ApnumCore` — no AppKit/SwiftUI. Tool protocol, `ToolRegistry`, `PermissionPolicy`, `AuditLog`, `ChangeFeed`, `JSONFileStore`, `AppPaths`, `SyncRecord`, `WakeScheduler`, and platform protocols (`Ringer`, `ShortcutRunning`).
 - Feature modules depend only on `ApnumCore`, never on each other: `ApnumAlarms`, `ApnumTimers`, `ApnumNotes`, `ApnumCalendar`, `ApnumSystem`.
 - `ApnumApp` — SwiftUI menu bar app and the composition root. It builds every service, collects their tools into one `ToolRegistry`, and the UI performs every action through `registry.call(...)`.
 
@@ -30,8 +30,13 @@ The rule that makes agents easy later: **every action is a `Tool`**. The UI may 
 - Pick the tier honestly: `read` (no changes), `write` (local, reversible), `dangerous` (outward-facing, destructive or hard to undo).
 - Records that will sync to the phone conform to `SyncRecord` (UUID id, `updatedAt`, `deletedAt` tombstone). Never hard-delete them.
 - Services publish to the shared `ChangeFeed` after every change.
-- Time-based services expose `tick(now: Date)` and are driven by `Ticker`, so tests pass fixed dates instead of sleeping.
+- Time-based services expose `tick(now: Date)` and `nextWakeDate(after: Date) -> Date?`, and are driven by `WakeScheduler`, which sleeps until something is due (no polling). Tests pass fixed dates instead of sleeping.
+- Lightweight is a goal: no polling loops, no third-party dependencies in the Mac app, idle CPU 0% and memory under 30 MB.
 - Persist with `JSONFileStore` or plain files under `AppPaths`. Tests use `AppPaths.temporary()`.
 - Tests use Swift Testing (`import Testing`, `@Test`, `#expect`). Do not test against the real Calendar, Shortcuts or system volume; put those behind a protocol and test the logic with a fake.
 - No third-party dependencies without discussing it first. Anything borrowed must be MIT/Apache/BSD compatible.
 - Never log tool inputs or outputs; they can contain private data.
+
+## Language choices
+
+Swift for the Mac app, Kotlin for the Android companion. Rust is reserved for code that both apps must share once the phone link exists (sync protocol, pairing, encryption), exposed to Swift and Kotlin through UniFFI. Do not add Rust to the Mac-only features.

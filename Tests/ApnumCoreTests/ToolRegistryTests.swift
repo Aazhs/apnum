@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import ApnumCore
 
@@ -98,6 +99,25 @@ private struct Boom: Tool {
         let lines = try String(contentsOf: paths.auditLog, encoding: .utf8).split(separator: "\n")
         #expect(lines.count == 3)
         #expect(await log.recent(limit: 1).first?.tool == "t2")
+    }
+
+    @Test func wakeSchedulerSleepsUntilDueAndWakesOnPoke() async throws {
+        let fires = Mutex(0)
+        let due = Mutex<Date?>(nil)
+        let scheduler = WakeScheduler(maxSleep: 60)
+        scheduler.start(next: { _ in due.withLock { $0 } }, fire: { _ in fires.withLock { $0 += 1 } })
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(fires.withLock { $0 } == 1)  // fired once at start, then sleeping (nothing due)
+
+        due.withLock { $0 = Date().addingTimeInterval(0.2) }
+        scheduler.poke()
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(fires.withLock { $0 } == 2)  // poke re-checked immediately
+
+        due.withLock { $0 = nil }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(fires.withLock { $0 } == 3)  // woke at the due date
+        scheduler.stop()
     }
 
     @Test func changeFeedBroadcasts() async {
