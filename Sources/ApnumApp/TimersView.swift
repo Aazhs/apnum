@@ -2,27 +2,59 @@ import ApnumCore
 import ApnumTimers
 import SwiftUI
 
+// MARK: - Recents
+
+private struct TimersRecent: Codable, Hashable, Identifiable {
+    var seconds: Int
+    var label: String
+    var id: String { "\(seconds)|\(label)" }
+
+    static let seeds = [60, 180, 300, 600, 900, 1500, 1800].map { TimersRecent(seconds: $0, label: "") }
+    static let limit = 12
+
+    /// An empty string means "never stored": show the seeds. A stored "[]" really is empty.
+    static func decode(_ json: String) -> [TimersRecent] {
+        guard !json.isEmpty else { return seeds }
+        return (try? JSONDecoder().decode([TimersRecent].self, from: Data(json.utf8))) ?? seeds
+    }
+
+    static func encode(_ list: [TimersRecent]) -> String {
+        (try? JSONEncoder().encode(list)).flatMap { String(data: $0, encoding: .utf8) } ?? ""
+    }
+
+    /// "30 min", "1 h 30 min", "45 sec".
+    var caption: String {
+        let h = seconds / 3600, m = (seconds % 3600) / 60, s = seconds % 60
+        var parts: [String] = []
+        if h > 0 { parts.append("\(h) h") }
+        if m > 0 { parts.append("\(m) min") }
+        if s > 0 { parts.append("\(s) sec") }
+        let text = parts.joined(separator: " ")
+        return label.isEmpty ? text : "\(label), \(text)"
+    }
+}
+
 // MARK: - Screen
 
 struct TimersView: View {
     @Environment(AppModel.self) private var model
+    @AppStorage("timerRecents") private var recentsJSON = ""
+    @State private var entry = DigitEntry(values: [0, 10, 0], ranges: [0...23, 0...59, 0...59])
+    @State private var label = ""
+
+    private var recents: [TimersRecent] { TimersRecent.decode(recentsJSON) }
 
     private var active: [CountdownTimer] {
         model.timerList.filter { $0.state != .finished }
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 40) {
-                rings
-                StartTimerSection()
-                StopwatchSection()
-            }
-            .padding(.horizontal, 36)
-            .padding(.top, 20)
-            .padding(.bottom, 40)
-            .frame(maxWidth: 860, alignment: .leading)
-            .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: 0) {
+            recentsColumn
+                .frame(width: 300)
+            Divider()
+            main
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .navigationTitle("Timers")
         .navigationSubtitle(subtitle)
@@ -31,88 +63,232 @@ struct TimersView: View {
     private var subtitle: String {
         let running = model.timerList.filter { $0.state == .running }.count
         let ringing = model.timerList.filter { $0.state == .ringing }.count
-        if ringing > 0 { return ringing == 1 ? "1 timer is ringing" : "\(ringing) timers are ringing" }
-        switch running {
-        case 0: return "None running"
-        case 1: return "1 running"
-        default: return "\(running) running"
+        if ringing > 0 { return ringing == 1 ? "1 ringing" : "\(ringing) ringing" }
+        return running == 0 ? "No timers running" : "\(running) running"
+    }
+
+    // MARK: Recents
+
+    private var recentsColumn: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Recents")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 28)
+                .padding(.vertical, 10)
+            Divider()
+            List {
+                ForEach(recents) { recent in
+                    HStack(spacing: 12) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(TimerFormat.string(Double(recent.seconds)))
+                                .font(.clock(40, weight: .thin))
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
+                            Text(recent.caption)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 8)
+                        Button("Start \(recent.caption)", systemImage: "play.fill") {
+                            start(seconds: recent.seconds, label: recent.label)
+                        }
+                        .buttonStyle(.circle(.green, size: 48))
+                    }
+                    .frame(height: 80)
+                    .contentShape(.rect)
+                    .onTapGesture { load(recent) }
+                    .contextMenu {
+                        Button("Start") { start(seconds: recent.seconds, label: recent.label) }
+                        Button("Remove") { remove(recent) }
+                    }
+                    .listRowInsets(.init(top: 0, leading: 28, bottom: 0, trailing: 20))
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
         }
+    }
+
+    private func load(_ recent: TimersRecent) {
+        entry.set([recent.seconds / 3600, (recent.seconds % 3600) / 60, recent.seconds % 60])
+        label = recent.label
+    }
+
+    private func remove(_ recent: TimersRecent) {
+        recentsJSON = TimersRecent.encode(recents.filter { $0 != recent })
+    }
+
+    private func record(_ recent: TimersRecent) {
+        var list = recents.filter { $0 != recent }
+        list.insert(recent, at: 0)
+        recentsJSON = TimersRecent.encode(Array(list.prefix(TimersRecent.limit)))
+    }
+
+    private func start(seconds: Int, label: String) {
+        guard seconds > 0 else { return }
+        let trimmed = label.trimmingCharacters(in: .whitespaces)
+        record(TimersRecent(seconds: seconds, label: trimmed))
+        Task {
+            var input: [String: JSONValue] = ["seconds": .number(Double(seconds))]
+            if !trimmed.isEmpty { input["label"] = .string(trimmed) }
+            await model.run("timer.start", .object(input))
+        }
+    }
+
+    // MARK: Main area
+
+    private var total: Int { entry.values[0] * 3600 + entry.values[1] * 60 + entry.values[2] }
+
+    private func startFromField() {
+        start(seconds: total, label: label)
+        label = ""
+    }
+
+    private func reset() {
+        entry.set([0, 0, 0])
+        label = ""
     }
 
     @ViewBuilder
-    private var rings: some View {
+    private var main: some View {
         if active.isEmpty {
-            Text("No timers running. Pick a length below.")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .padding(.top, 8)
+            setup
         } else {
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 200, maximum: 260), spacing: 28, alignment: .top)],
-                      alignment: .leading, spacing: 32) {
-                ForEach(active) { timer in
-                    TimerRing(timer: timer)
+            ScrollView {
+                VStack(spacing: 28) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 210, maximum: 300), spacing: 16, alignment: .top)], spacing: 32) {
+                        ForEach(active) { timer in
+                            TimersTile(timer: timer)
+                        }
+                    }
+                    Divider()
+                    compactSetup
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 24)
             }
         }
     }
-}
 
-// MARK: - Ring
+    private var setup: some View {
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+                VStack(spacing: 14) {
+                    DigitField(entry: $entry, labels: ["hr", "min", "sec"], size: min(92, max(40, (geo.size.width - 120) / 3.6)))
+                    labelField
+                        .padding(.top, 4)
+                }
+                Spacer(minLength: 0)
+                HStack(spacing: 20) {
+                    Button("Cancel", action: reset)
+                        .buttonStyle(.pill(width: 160))
+                        .disabled(total == 0)
+                    Button("Start", action: startFromField)
+                        .buttonStyle(.pill(.green, width: 160))
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(total == 0)
+                }
+                .padding(.bottom, 28)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
 
-private func remaining(of timer: CountdownTimer, at date: Date) -> TimeInterval {
-    switch timer.state {
-    case .running: max(0, (timer.endsAt ?? date).timeIntervalSince(date))
-    case .paused: timer.pausedRemaining ?? timer.duration
-    case .ringing, .finished: 0
+    private var labelField: some View {
+        TextField("Label", text: $label, prompt: Text("Timer"))
+            .labelsHidden()
+            .textFieldStyle(.roundedBorder)
+            .multilineTextAlignment(.center)
+            .frame(width: 220)
+            .onSubmit { if total > 0 { startFromField() } }
+    }
+
+    private var compactSetup: some View {
+        ViewThatFits {
+            HStack(spacing: 16) {
+                DigitField(entry: $entry, labels: ["hr", "min", "sec"], size: 40)
+                labelField
+                Button("Start", action: startFromField)
+                    .buttonStyle(.pill(.green, width: 120))
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(total == 0)
+            }
+            VStack(spacing: 12) {
+                DigitField(entry: $entry, labels: ["hr", "min", "sec"], size: 40)
+                HStack(spacing: 12) {
+                    labelField
+                    Button("Start", action: startFromField)
+                        .buttonStyle(.pill(.green, width: 100))
+                        .disabled(total == 0)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
-private struct TimerRing: View {
+// MARK: - Tile
+
+private struct TimersTile: View {
     @Environment(AppModel.self) private var model
     let timer: CountdownTimer
     @State private var pulse = false
 
     private var ringing: Bool { timer.state == .ringing }
     private var paused: Bool { timer.state == .paused }
-    private var tint: Color { ringing ? .orange : .accentColor }
+    private var ringTint: Color { ringing ? .red : (paused ? .gray : .orange) }
+    private var id: JSONValue { .string(timer.id.uuidString) }
+
+    private func remaining(at date: Date) -> TimeInterval {
+        switch timer.state {
+        case .running: max(0, (timer.endsAt ?? date).timeIntervalSince(date))
+        case .paused: timer.pausedRemaining ?? timer.duration
+        case .ringing, .finished: 0
+        }
+    }
 
     var body: some View {
         VStack(spacing: 14) {
             if timer.state == .running {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    face(at: context.date)
+                    ring(at: context.date)
                 }
             } else {
-                face(at: .now)
+                ring(at: .now)
             }
+            Text(timer.label.isEmpty ? "Timer" : timer.label)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
             controls
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func face(at date: Date) -> some View {
-        let left = remaining(of: timer, at: date)
+    private func ring(at date: Date) -> some View {
+        let left = remaining(at: date)
         let progress = ringing ? 1 : (timer.duration > 0 ? min(1, left / timer.duration) : 0)
         return ZStack {
             Circle().stroke(.quaternary, lineWidth: 6)
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(tint, style: StrokeStyle(lineWidth: 6, lineCap: .round))
+                .stroke(ringTint.opacity(ringing && pulse ? 0.45 : 1), style: StrokeStyle(lineWidth: 6, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-            VStack(spacing: 4) {
-                Text(ringing ? "0:00" : TimerFormat.string(left))
-                    .font(.clock(40, weight: .light))
-                    .monospacedDigit()
-                    .contentTransition(.numericText(countsDown: true))
-                Text(timer.label.isEmpty ? TimerFormat.string(timer.duration) : timer.label)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 24)
-            }
+            Text(TimerFormat.string(left))
+                .font(.clock(44, weight: .light))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.horizontal, 26)
+                .foregroundStyle(paused ? .secondary : .primary)
+                .contentTransition(.numericText(countsDown: true))
         }
-        .frame(width: 180, height: 180)
-        .opacity(paused ? 0.55 : (ringing && pulse ? 0.55 : 1))
+        .frame(width: 190, height: 190)
+        .padding(3)
         .onAppear { updatePulse() }
         .onChange(of: ringing) { updatePulse() }
         .accessibilityElement(children: .ignore)
@@ -122,192 +298,35 @@ private struct TimerRing: View {
 
     private func updatePulse() {
         if ringing {
-            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
+            withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { pulse = true }
         } else {
             withAnimation(.default) { pulse = false }
         }
     }
 
     private var controls: some View {
-        let id = timer.id.uuidString
-        return GlassEffectContainer(spacing: 8) {
-            HStack(spacing: 8) {
-                if ringing {
-                    Button("Stop") { Task { await model.run("timer.cancel", ["id": .string(id)]) } }
-                        .buttonStyle(.glassProminent)
-                        .tint(.orange)
-                } else {
-                    Button(paused ? "Resume" : "Pause") {
-                        Task { await model.run(paused ? "timer.resume" : "timer.pause", ["id": .string(id)]) }
+        VStack(spacing: 10) {
+            if ringing {
+                Button("Stop") { Task { await model.run("timer.stop", ["id": id]) } }
+                    .buttonStyle(.pill(.red, width: 140))
+            } else {
+                HStack(spacing: 18) {
+                    Button("Cancel timer", systemImage: "xmark") {
+                        Task { await model.run("timer.cancel", ["id": id]) }
                     }
-                    .buttonStyle(.glass)
-                }
-                Button("+1 min") {
-                    Task { await model.run("timer.add_time", ["id": .string(id), "seconds": 60]) }
-                }
-                .buttonStyle(.glass)
-                if !ringing {
-                    Button("Cancel") { Task { await model.run("timer.cancel", ["id": .string(id)]) } }
-                        .buttonStyle(.glass)
-                }
-            }
-        }
-        .controlSize(.small)
-    }
-}
-
-// MARK: - Start a timer
-
-private struct StartTimerSection: View {
-    @Environment(AppModel.self) private var model
-    @State private var hours = 0
-    @State private var minutes = 10
-    @State private var seconds = 0
-    @State private var label = ""
-
-    private let presets: [(title: String, seconds: Double)] = [
-        ("1 min", 60), ("3 min", 180), ("5 min", 300), ("10 min", 600), ("15 min", 900),
-        ("25 min", 1500), ("45 min", 2700), ("1 h", 3600),
-    ]
-
-    private var total: Double { Double(hours * 3600 + minutes * 60 + seconds) }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            PageHeading("Start a timer")
-
-            GlassEffectContainer(spacing: 8) {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 72), spacing: 8)], alignment: .leading, spacing: 8) {
-                    ForEach(presets, id: \.title) { preset in
-                        Button(preset.title) { start(preset.seconds, label: "") }
-                            .buttonStyle(.glass)
+                    .buttonStyle(.circle(.secondary, size: 48))
+                    Button(paused ? "Resume" : "Pause", systemImage: paused ? "play.fill" : "pause.fill") {
+                        Task { await model.run(paused ? "timer.resume" : "timer.pause", ["id": id]) }
                     }
+                    .buttonStyle(.circle(paused ? .green : .orange, size: 48))
                 }
             }
-
-            HStack(spacing: 18) {
-                unit("h", value: $hours, range: 0...23)
-                unit("min", value: $minutes, range: 0...59)
-                unit("s", value: $seconds, range: 0...59)
+            Button("+1 min") {
+                Task { await model.run("timer.add_time", ["id": id, "seconds": 60]) }
             }
-            .controlSize(.large)
-            HStack(spacing: 14) {
-                TextField("Label", text: $label, prompt: Text("Label (optional)"))
-                    .textFieldStyle(.roundedBorder)
-                    .frame(maxWidth: 280)
-                Button("Start") { start(total, label: label) }
-                    .buttonStyle(.glassProminent)
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(total < 1)
-            }
-            .controlSize(.large)
+            .buttonStyle(.plain)
+            .font(.callout)
+            .foregroundStyle(.secondary)
         }
-    }
-
-    private func unit(_ title: String, value: Binding<Int>, range: ClosedRange<Int>) -> some View {
-        HStack(spacing: 4) {
-            TextField(title, value: value, format: .number)
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
-                .monospacedDigit()
-                .frame(width: 48)
-            Text(title).foregroundStyle(.secondary).fixedSize()
-            Stepper(title, value: value, in: range).labelsHidden()
-        }
-    }
-
-    private func start(_ seconds: Double, label: String) {
-        let trimmed = label.trimmingCharacters(in: .whitespaces)
-        Task {
-            var input: [String: JSONValue] = ["seconds": .number(seconds)]
-            if !trimmed.isEmpty { input["label"] = .string(trimmed) }
-            await model.run("timer.start", .object(input))
-        }
-        self.label = ""
-    }
-}
-
-// MARK: - Stopwatch
-
-private struct StopwatchSection: View {
-    @Environment(AppModel.self) private var model
-
-    private var watch: Stopwatch { model.stopwatch }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            PageHeading("Stopwatch")
-
-            HStack(alignment: .center, spacing: 28) {
-                readout
-                Spacer(minLength: 0)
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) {
-                        Button(watch.isRunning ? "Pause" : (watch.elapsed(at: .now) > 0 ? "Resume" : "Start")) {
-                            control(watch.isRunning ? "pause" : "start")
-                        }
-                        .buttonStyle(.glassProminent)
-                        Button("Lap") { control("lap") }
-                            .buttonStyle(.glass)
-                            .disabled(!watch.isRunning)
-                        Button("Reset") { control("reset") }
-                            .buttonStyle(.glass)
-                            .disabled(watch.isRunning || watch.elapsed(at: .now) == 0)
-                    }
-                }
-                .controlSize(.large)
-            }
-
-            if !watch.laps.isEmpty {
-                laps
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var readout: some View {
-        if watch.isRunning {
-            TimelineView(.periodic(from: .now, by: 0.1)) { context in
-                Text(Self.format(watch.elapsed(at: context.date), tenths: true))
-                    .font(.clock(56, weight: .thin))
-                    .monospacedDigit()
-            }
-        } else {
-            Text(Self.format(watch.accumulated, tenths: true))
-                .font(.clock(56, weight: .thin))
-                .monospacedDigit()
-        }
-    }
-
-    private var laps: some View {
-        let totals = watch.laps
-        return VStack(spacing: 0) {
-            ForEach(Array(totals.enumerated().reversed()), id: \.offset) { index, total in
-                let split = total - (index > 0 ? totals[index - 1] : 0)
-                HStack {
-                    Text("Lap \(index + 1)").foregroundStyle(.secondary)
-                    Spacer()
-                    Text(Self.format(split, tenths: true)).frame(width: 110, alignment: .trailing)
-                    Text(Self.format(total, tenths: true)).foregroundStyle(.secondary)
-                        .frame(width: 110, alignment: .trailing)
-                }
-                .monospacedDigit()
-                .padding(.vertical, 8)
-                Divider()
-            }
-        }
-        .frame(maxWidth: 520)
-    }
-
-    private func control(_ action: String) {
-        Task { await model.run("stopwatch.control", ["action": .string(action)]) }
-    }
-
-    /// "0:07.3", "12:03.9", "1:02:03.0".
-    static func format(_ seconds: TimeInterval, tenths: Bool) -> String {
-        let t = max(0, Int((seconds * 10).rounded(.down)))
-        let h = t / 36000, m = (t / 600) % 60, s = (t / 10) % 60, d = t % 10
-        let head = h > 0 ? String(format: "%d:%02d:%02d", h, m, s) : String(format: "%d:%02d", m, s)
-        return tenths ? "\(head).\(d)" : head
     }
 }
