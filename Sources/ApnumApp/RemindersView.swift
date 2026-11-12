@@ -325,10 +325,10 @@ private struct AccessUnavailable: View {
                 Button("Open System Settings") {
                     if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Reminders") { openURL(url) }
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.pill(.accentColor))
             } else {
                 Button("Allow access") { Task { await model.requestCalendarAccess() } }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.pill(.accentColor))
             }
         }
     }

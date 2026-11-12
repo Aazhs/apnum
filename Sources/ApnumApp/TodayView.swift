@@ -80,44 +80,63 @@ struct TodayView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        ScrollView {
-            TimelineView(.everyMinute) { context in
-                let now = context.date
-                VStack(alignment: .leading, spacing: 30) {
-                    header(now)
-                    DayRibbon(now: now)
-                        .frame(height: 172)
-                    HStack(alignment: .top, spacing: 40) {
-                        comingUp(now)
+        TimelineView(.everyMinute) { context in
+            let now = context.date
+            let dark = Sky.isDark(atHour: Sky.hour(of: now))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(alignment: .bottom, spacing: 18) {
+                        hero(now)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 32) {
-                            dueToday(now)
-                            notes
-                        }
-                        .frame(width: 300, alignment: .leading)
+                        nextAlarm(now)
+                            .frame(width: 320)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
+
+                    GlassPanel("Your day", symbol: "sun.horizon") {
+                        DayRibbon(now: now)
+                            .frame(height: 150)
+                    }
+                    .frame(height: 220)
+
+                    HStack(alignment: .top, spacing: 18) {
+                        comingUp(now)
+                        VStack(spacing: 18) {
+                            timers
+                            dueToday(now)
+                        }
+                        .frame(width: 320)
+                    }
+
+                    notes
                 }
-                .padding(.horizontal, 36)
-                .padding(.top, 20)
-                .padding(.bottom, 36)
-                .frame(maxWidth: 1100, alignment: .leading)
+                .padding(.horizontal, 32)
+                .padding(.top, 12)
+                .padding(.bottom, 32)
+                .frame(maxWidth: 1180)
+                .frame(maxWidth: .infinity)
             }
+            .scrollContentBackground(.hidden)
+            .background { SkyBackdrop(now: now) }
+            .environment(\.colorScheme, dark ? .dark : .light)
         }
         .navigationTitle("Today")
     }
 
-    // MARK: Header
+    // MARK: Hero
 
-    private func header(_ now: Date) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    /// Date and a large clock straight on the sky, like a lock screen.
+    private func hero(_ now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
             Text(now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                .font(.title2.weight(.medium))
+                .font(.title2.weight(.semibold))
                 .foregroundStyle(.secondary)
-            ClockText(now, size: 88, weight: .thin)
+            ClockText(now, size: 120, weight: .thin)
+                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
             Text(summary(now))
-                .font(.title3)
+                .font(.title3.weight(.medium))
                 .foregroundStyle(.secondary)
-                .padding(.top, 4)
+                .padding(.top, 2)
         }
     }
 
@@ -138,16 +157,19 @@ struct TodayView: View {
         return parts.joined(separator: ", and ") + "."
     }
 
-    // MARK: Coming up
+    // MARK: Panels
 
     private func comingUp(_ now: Date) -> some View {
-        let items = model.upcoming(from: now)
-        return VStack(alignment: .leading, spacing: 14) {
-            PageHeading("Coming up")
+        let items = model.upcoming(from: now, limit: 6)
+        return GlassPanel("Coming up", symbol: "clock") {
+            if model.eventAccess != .granted && !model.isDemo {
+                Button("Show my calendar") { Task { await model.requestCalendarAccess() } }
+                    .buttonStyle(.pill)
+            }
+        } content: {
             if items.isEmpty {
                 Text("Nothing else is scheduled until tomorrow night.")
                     .foregroundStyle(.secondary)
-                    .padding(.vertical, 8)
             } else {
                 VStack(spacing: 0) {
                     ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
@@ -156,39 +178,75 @@ struct TodayView: View {
                     }
                 }
             }
-            if model.eventAccess != .granted && !model.isDemo {
-                Button {
-                    Task { await model.requestCalendarAccess() }
-                } label: {
-                    Label("Show my calendar here", systemImage: "calendar.badge.plus")
+        }
+    }
+
+    private func nextAlarm(_ now: Date) -> some View {
+        GlassPanel("Next alarm", symbol: "alarm") {
+            Button("Alarms") { model.section = .alarms }
+                .buttonStyle(.link)
+                .focusEffectDisabled()
+        } content: {
+            if let next = model.nextAlarm {
+                VStack(alignment: .leading, spacing: 2) {
+                    ClockText(next.date, size: 48, weight: .light)
+                    Text(next.alarm.label.isEmpty ? "Alarm" : next.alarm.label)
+                        .font(.headline)
+                    Text("\(AlarmRepeat.summary(next.alarm.repeatDays)), \(ClockFormat.relative(to: next.date, from: now))")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.glass)
-                .padding(.top, 4)
+            } else {
+                Text("No alarms are on.")
+                    .foregroundStyle(.secondary)
+                Button("New alarm") { model.section = .alarms }
+                    .buttonStyle(.pill)
             }
         }
     }
 
-    // MARK: Side column
+    private var timers: some View {
+        let active = model.timerList.filter { $0.state != .finished }
+        return GlassPanel("Timers", symbol: "timer") {
+            Button("All timers") { model.section = .timers }
+                .buttonStyle(.link)
+                .focusEffectDisabled()
+        } content: {
+            if active.isEmpty {
+                Text("No timers running.")
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(active.prefix(3)) { TodayTimerRow(timer: $0) }
+                }
+            }
+            HStack(spacing: 8) {
+                ForEach([5, 10, 25], id: \.self) { minutes in
+                    Button("\(minutes) min") {
+                        Task { await model.run("timer.start", ["minutes": .number(Double(minutes))]) }
+                    }
+                    .buttonStyle(.pill)
+                }
+            }
+        }
+    }
 
     private func dueToday(_ now: Date) -> some View {
         let due = model.remindersDueToday(now: now)
-        return VStack(alignment: .leading, spacing: 12) {
-            PageHeading("Due today") {
-                if !due.isEmpty {
-                    Button("All reminders") { model.section = .reminders }
-                        .buttonStyle(.link)
-                        .font(.callout)
-                }
-            }
+        return GlassPanel("Due today", symbol: "checklist") {
+            Button("Reminders") { model.section = .reminders }
+                .buttonStyle(.link)
+                .focusEffectDisabled()
+        } content: {
             if model.reminderAccess != .granted && !model.isDemo {
                 Text("Allow Reminders access to see what's due.")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .foregroundStyle(.secondary)
             } else if due.isEmpty {
                 Text("Nothing due. Enjoy it.")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .foregroundStyle(.secondary)
             } else {
-                ForEach(due.prefix(5)) { reminder in
-                    DueReminderRow(reminder: reminder, now: now)
+                VStack(alignment: .leading, spacing: 12) {
+                    ForEach(due.prefix(5)) { DueReminderRow(reminder: $0, now: now) }
                 }
             }
         }
@@ -196,31 +254,72 @@ struct TodayView: View {
 
     private var notes: some View {
         let pinned = model.noteList.filter(\.pinned)
-        let shown = Array((pinned.isEmpty ? model.noteList : pinned).prefix(3))
-        return VStack(alignment: .leading, spacing: 12) {
-            PageHeading(pinned.isEmpty ? "Recent notes" : "Pinned notes")
+        let shown = Array((pinned.isEmpty ? model.noteList : pinned + model.noteList.filter { !$0.pinned }).prefix(3))
+        return GlassPanel("Notes", symbol: "note.text") {
+            Button("Notes") { model.section = .notes }
+                .buttonStyle(.link)
+                .focusEffectDisabled()
+        } content: {
             if shown.isEmpty {
-                Button {
-                    model.section = .notes
-                } label: {
-                    Label("Write a note", systemImage: "square.and.pencil")
-                }
-                .buttonStyle(.glass)
+                Text("Notes you pin appear here.")
+                    .foregroundStyle(.secondary)
             }
-            ForEach(shown) { note in
-                Button {
-                    model.focusNoteID = note.id
-                    model.section = .notes
-                } label: {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(note.displayTitle).font(.headline).lineLimit(1)
-                        Text(note.preview).font(.callout).foregroundStyle(.secondary).lineLimit(2)
+            HStack(alignment: .top, spacing: 24) {
+                ForEach(shown) { note in
+                    Button {
+                        model.focusNoteID = note.id
+                        model.section = .notes
+                    } label: {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(note.displayTitle).font(.headline).lineLimit(1)
+                            Text(note.preview).font(.callout).foregroundStyle(.secondary).lineLimit(3)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                        .contentShape(.rect)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(.rect)
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
             }
+        }
+    }
+}
+
+private struct TodayTimerRow: View {
+    @Environment(AppModel.self) private var model
+    let timer: CountdownTimer
+
+    var body: some View {
+        HStack(spacing: 12) {
+            TimelineView(.periodic(from: .now, by: timer.state == .running ? 1 : 3600)) { context in
+                let remaining = timer.remaining(at: context.date)
+                let progress = timer.duration > 0 ? remaining / timer.duration : 0
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle().stroke(.quaternary, lineWidth: 4)
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(timer.state == .running ? Color.orange : .secondary, style: StrokeStyle(lineWidth: 4, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                    .frame(width: 30, height: 30)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(TimerFormat.string(remaining))
+                            .font(.clock(24, weight: .regular))
+                            .monospacedDigit()
+                        Text(timer.label.isEmpty ? "Timer" : timer.label)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Spacer()
+            Button {
+                let tool = timer.state == .running ? "timer.pause" : "timer.resume"
+                Task { await model.run(tool, ["id": .string(timer.id.uuidString)]) }
+            } label: {
+                Label(timer.state == .running ? "Pause" : "Resume", systemImage: timer.state == .running ? "pause.fill" : "play.fill")
+            }
+            .buttonStyle(.circle(timer.state == .running ? .orange : .green, size: 34))
         }
     }
 }

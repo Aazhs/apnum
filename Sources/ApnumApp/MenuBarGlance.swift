@@ -49,17 +49,15 @@ struct MenuBarGlance: View {
                     ForEach(running) { GlanceTimerRow(timer: $0) }
                 }
 
-                GlassEffectContainer(spacing: 8) {
-                    HStack(spacing: 8) {
-                        ForEach([1, 5, 10, 25], id: \.self) { minutes in
-                            Button("\(minutes) min") {
-                                Task { await model.run("timer.start", ["minutes": .number(Double(minutes))]) }
-                            }
-                            .buttonStyle(.glass)
-                            .frame(maxWidth: .infinity)
+                HStack(spacing: 8) {
+                    ForEach([1, 5, 10, 25], id: \.self) { minutes in
+                        Button("\(minutes) min") {
+                            Task { await model.run("timer.start", ["minutes": .number(Double(minutes))]) }
                         }
+                        .buttonStyle(.pill(width: 70))
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Start a timer")
 
                 HStack(spacing: 8) {
@@ -67,19 +65,19 @@ struct MenuBarGlance: View {
                         openWindow(id: "main")
                         NSApp.activate()
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(.pill(.accentColor))
                     Spacer()
                     SettingsLink {
                         Image(systemName: "gearshape")
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.circle(.secondary, size: 32))
                     .accessibilityLabel("Settings")
                     Button {
                         NSApp.terminate(nil)
                     } label: {
                         Image(systemName: "power")
                     }
-                    .buttonStyle(.glass)
+                    .buttonStyle(.circle(.secondary, size: 32))
                     .accessibilityLabel("Quit apnum")
                 }
             }
@@ -109,8 +107,7 @@ private struct GlanceTimerRow: View {
             } label: {
                 Image(systemName: timer.state == .running ? "pause.fill" : "play.fill")
             }
-            .buttonStyle(.glass)
-            .controlSize(.small)
+            .buttonStyle(.circle(timer.state == .running ? .orange : .green, size: 28))
             .accessibilityLabel(timer.state == .running ? "Pause" : "Resume")
         }
         .font(.callout)

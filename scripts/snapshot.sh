@@ -20,7 +20,7 @@ cp -R build/Apnum.app "$RUN_APP"
 defaults write dev.apnum.mac "NSWindow Frame main" "100 100 $W $H 0 0 3000 2000" 2>/dev/null || true
 
 PREVIEW=""; [ "$SECTION" = glance ] && PREVIEW=glance && SECTION=today
-open -g -n -F "$RUN_APP" --env APNUM_PREVIEW="$PREVIEW" --env APNUM_DEMO=1 --env APNUM_HOME="$HOME_DIR" --env APNUM_SECTION="$SECTION" --env APNUM_APPEARANCE="$LOOK"
+open -g -n -F "$RUN_APP" --env APNUM_PREVIEW="$PREVIEW" --env APNUM_DEMO=1 --env APNUM_HOME="$HOME_DIR" --env APNUM_SECTION="$SECTION" --env APNUM_APPEARANCE="$LOOK" --env APNUM_SKY_HOUR="${APNUM_SKY_HOUR:-}"
 PID=""
 for _ in $(seq 1 40); do
   PID="$(pgrep -n -f "$RUN_APP/Contents/MacOS/Apnum" || true)"

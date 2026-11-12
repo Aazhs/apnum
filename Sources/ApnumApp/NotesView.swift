@@ -64,7 +64,7 @@ struct NotesView: View {
             } description: {
                 Text("Notes are Markdown files on this Mac. Your agents can read and write them too.")
             } actions: {
-                Button("New note", action: newNote).buttonStyle(.glassProminent)
+                Button("New note", action: newNote).buttonStyle(.pill(.accentColor))
             }
         } else {
             HSplitView {

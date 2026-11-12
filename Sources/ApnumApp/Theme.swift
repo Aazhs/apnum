@@ -30,6 +30,8 @@ enum Sky {
     }
 
     static func hour(of date: Date, calendar: Calendar = .current) -> Double {
+        // Debug only: APNUM_SKY_HOUR previews the sky at another time (scripts/snapshot.sh).
+        if let forced = ProcessInfo.processInfo.environment["APNUM_SKY_HOUR"].flatMap(Double.init) { return forced }
         let c = calendar.dateComponents([.hour, .minute], from: date)
         return Double(c.hour ?? 0) + Double(c.minute ?? 0) / 60
     }

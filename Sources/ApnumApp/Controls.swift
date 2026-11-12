@@ -260,11 +260,13 @@ struct SkyBackdrop: View {
                 let progress = daylight ? (hour - 6) / 13 : ((hour + 24 - 19).truncatingRemainder(dividingBy: 24)) / 11
                 let x = geo.size.width * (0.08 + 0.84 * progress)
                 let y = geo.size.height * (0.12 + 0.18 * pow(2 * progress - 1, 2))
-                RadialGradient(
-                    colors: [Color.white.opacity(daylight ? 0.55 : 0.22), .clear],
-                    center: .zero, startRadius: 0, endRadius: daylight ? 420 : 260)
-                    .offset(x: x, y: y)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                let radius: CGFloat = daylight ? 420 : 240
+                Circle()
+                    .fill(RadialGradient(
+                        colors: [Color.white.opacity(daylight ? 0.5 : 0.2), Color.white.opacity(0)],
+                        center: .center, startRadius: 0, endRadius: radius))
+                    .frame(width: radius * 2, height: radius * 2)
+                    .position(x: x, y: y)
 
                 if Sky.isDark(atHour: hour) {
                     Canvas { context, size in
