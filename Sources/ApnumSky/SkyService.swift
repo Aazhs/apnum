@@ -95,6 +95,11 @@ public actor SkyService {
         engine.scene(at: date, location: current.location, weather: currentWeather())
     }
 
+    /// The real sky colour through the day at the current location (see `SkyEngine.dayColors`).
+    public func dayColors(for date: Date) -> [RGB] {
+        engine.dayColors(for: date, location: current.location)
+    }
+
     public func summary(at date: Date) -> SkySummary {
         engine.summary(at: date, location: current.location, weather: currentWeather())
     }

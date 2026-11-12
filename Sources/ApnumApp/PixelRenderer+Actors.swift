@@ -281,7 +281,7 @@ extension PixelRenderer {
     /// Speech bubble anchor in points, while one is showing.
     func bubble() -> (text: String, x: CGFloat, y: CGFloat)? {
         guard let text = sayText, time < sayUntil else { return nil }
-        let k = CGFloat(Self.pixel)
+        let k = CGFloat(scale)
         return (text, CGFloat(player.x + 4) * k, CGFloat(player.y - (wet > 0 ? 6 : 1)) * k)
     }
 
@@ -299,7 +299,7 @@ extension PixelRenderer {
 
     /// A click at `point` (points, inside `size`). Returns true when the scene changed while it was not animating.
     func tap(point: CGPoint) {
-        let sx = Double(point.x) / Double(Self.pixel), sy = Double(point.y) / Double(Self.pixel)
+        let sx = Double(point.x) / Double(scale), sy = Double(point.y) / Double(scale)
         if !hitPlayer(sx, sy) { sayText = nil }
         if hitPlayer(sx, sy) {
             let line = PixelCharacter.lines[Int(random.unit() * Double(PixelCharacter.lines.count)) % PixelCharacter.lines.count]

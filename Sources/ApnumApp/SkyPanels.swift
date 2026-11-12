@@ -11,7 +11,7 @@ struct SkyReadout: View {
     let now: Date
 
     var body: some View {
-        GlassPanel(headline, symbol: scene.night > 0.5 ? "moon.stars" : "sun.max") {
+        GlassPanel(headline, symbol: symbol) {
             MoonGlyph(phase: scene.moonPhase, fraction: scene.moonFraction)
                 .frame(width: 26, height: 26)
                 .help("\(summary.moonPhaseName), \(summary.moonPercentLit)% lit")
@@ -27,7 +27,7 @@ struct SkyReadout: View {
                     .foregroundStyle(.secondary)
                 ForEach(goldLines, id: \.self) { line in
                     Label(line, systemImage: "sparkles")
-                        .foregroundStyle(Color(red: 1, green: 0.84, blue: 0.48))
+                        .foregroundStyle(gold)
                         .font(.callout.weight(.semibold))
                 }
             }
@@ -35,6 +35,23 @@ struct SkyReadout: View {
     }
 
     private var headline: String { "\(summary.skyName) in \(summary.placeName)" }
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var symbol: String {
+        switch summary.skyName {
+        case "Night": "moon.stars"
+        case "Dawn", "Sunrise": "sunrise"
+        case "Dusk", "Sunset": "sunset"
+        case "Morning", "Evening": "sun.horizon"
+        default: "sun.max"
+        }
+    }
+
+    /// Gold on dark glass, a deeper amber on light glass so it stays readable.
+    private var gold: Color {
+        colorScheme == .dark ? Color(red: 1, green: 0.84, blue: 0.48) : Color(red: 0.62, green: 0.38, blue: 0)
+    }
 
     private var weatherLine: String {
         var parts = [summary.weather.kind.label.prefix(1).uppercased() + summary.weather.kind.label.dropFirst()]
@@ -103,7 +120,7 @@ struct SkyTimeTravel: View {
             Slider(value: $minutes, in: 0...1439, step: 5) { Text("Time of day") }
                 .labelsHidden()
                 .frame(minWidth: 160)
-            Text(ClockFormat.string(dateFor(minutes)))
+            Text(ClockFormat.string(preview ?? now))
                 .font(.callout.weight(.medium))
                 .monospacedDigit()
                 .frame(width: 70, alignment: .leading)
@@ -120,7 +137,11 @@ struct SkyTimeTravel: View {
             // Only start previewing when the user moves the slider away from now.
             if preview != nil || abs(value - minutesOf(now)) >= 5 { preview = dateFor(value) }
         }
-        .onChange(of: preview) { _, value in if value == nil { minutes = minutesOf(now) } }
+        .onChange(of: preview) { _, value in
+            // Keep the handle in step when the preview changes from elsewhere (or returns to live).
+            let target = minutesOf(value ?? now)
+            if abs(target - minutes) >= 5 { minutes = target }
+        }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Preview the sky at another time")
     }

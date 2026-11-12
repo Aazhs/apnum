@@ -2,9 +2,22 @@
 
 A lightweight, open-source Mac app for one person's day: alarms, timers, notes, calendar, reminders and Mac controls, built from the start so AI agents can use every feature as a tool. It runs as a normal windowed app with a glance in the menu bar, designed for macOS 26 and Liquid Glass.
 
-![Today: the page is the current sky, with your day on glass](docs/screenshots/today.png)
+![Today by day: a pixel landscape under the real sky](docs/screenshots/today.png)
 
-![Today at night](docs/screenshots/today-dark.png)
+| Dusk | Night |
+|---|---|
+| ![Today at dusk](docs/screenshots/today-dusk.png) | ![Today at night](docs/screenshots/today-dark.png) |
+
+## The live sky
+
+Today opens on a small pixel world under the real sky for your city, ported from [aarshj.me](https://aarshj.me):
+
+- Colours follow the actual altitude of the sun, so dawn and dusk last as long as they really do where you are.
+- The sun, the moon in its true phase, real stars, the Milky Way and the planets sit where they are right now; meteor showers, blood moons, supermoons and blue moons show up on their real dates.
+- Live weather (Open-Meteo, coordinates only, optional) brings clouds, rain, fog and storms.
+- A character wanders the hills, the lamp lights itself at night, and fireflies come out. Click them.
+- Scrub the time slider to see the sky at any hour, and let the app's accent colour follow the sky.
+- Agents can ask too: `sky.now` answers "when is sunset?" or "is the moon up?".
 
 An Android companion app will follow, bringing the phone's SMS, OTPs, calls, notifications, files, WhatsApp and screen to the Mac, and letting the phone control the Mac in return.
 
@@ -27,6 +40,7 @@ An Android companion app will follow, bringing the phone's SMS, OTPs, calls, not
 | Alarms | apnum's own alarm clock; optional mirror into the macOS Clock app via Shortcuts | Full alarm clock in the companion app, synced both ways |
 | Timers and stopwatch | Modelled on the macOS Clock app: recents, typed durations, rings, laps | Synced |
 | Notes | Markdown files you own, with tags and search | Notes screen in the companion app, synced |
+| Sky | Sun, moon, stars, planets, meteor showers and weather for your city, drawn as a living pixel scene | Same sky on the phone |
 | Calendar and Reminders | Your real Apple Calendar (Day, Week, Month) and Reminders, iCloud and Google accounts included | Through the same Google account |
 | Mac control | Volume, media keys, clipboard, lock, sleep, battery, open apps, run Shortcuts | Control the Mac from the phone |
 | Phone | — | SMS, OTP, call control, notifications, files, WhatsApp, screen mirroring (scrcpy) |
@@ -58,6 +72,8 @@ Try it with sample data, without touching your own: `open build/Apnum.app --env 
 Set `APNUM_SIGN_IDENTITY` to a code-signing identity to keep macOS permission grants across rebuilds.
 
 On first launch apnum asks for notification permission. Calendar and Reminders access is requested from the Agenda tab, and media keys need Accessibility access (Settings shows how).
+
+Star and constellation data come from d3-celestial (BSD-3); see `Sources/ApnumSky/Resources/NOTICE.md`.
 
 Data lives in `~/Library/Application Support/apnum` (`APNUM_HOME` overrides it): `alarms.json`, `timers.json`, `notes/*.md` and `audit.jsonl`.
 

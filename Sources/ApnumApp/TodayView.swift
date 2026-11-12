@@ -443,7 +443,11 @@ struct DayRibbon: View {
                 CGFloat(min(max(date.timeIntervalSince(dayStart) / 86_400, 0), 1)) * width
             }
             ZStack(alignment: .topLeading) {
-                Rectangle().fill(Sky.day)
+                if model.skyDayColors.count > 1 {
+                    Rectangle().fill(LinearGradient(colors: model.skyDayColors.map(\.color), startPoint: .leading, endPoint: .trailing))
+                } else {
+                    Rectangle().fill(Sky.day)
+                }
 
                 // The part of the day that has passed sits in shadow.
                 Rectangle()

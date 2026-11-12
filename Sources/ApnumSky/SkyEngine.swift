@@ -84,3 +84,16 @@ public struct SkyEngine: Sendable {
             specialEvents: event.map { [$0.label] } ?? [])
     }
 }
+
+public extension SkyEngine {
+    /// The sky colour (mid-sky) through one local day at `location`, sampled `samples` times
+    /// from midnight to midnight. Follows the real sun, so dawn and dusk sit where they really are.
+    func dayColors(for date: Date, location: GeoLocation, samples: Int = 49, calendar: Calendar = .current) -> [RGB] {
+        let start = calendar.startOfDay(for: date)
+        return (0..<samples).map { i in
+            let t = start.addingTimeInterval(Double(i) / Double(samples - 1) * 86_400)
+            let altitude = Astronomy.sunPosition(t, location).altitudeDegrees
+            return SkyPalette.forSunAltitude(altitude).sky
+        }
+    }
+}

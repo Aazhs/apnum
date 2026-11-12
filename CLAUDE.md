@@ -18,7 +18,8 @@ scripts/snapshot.sh notes out.png dark   # screenshot one screen in demo mode, i
 ## Architecture
 
 - `ApnumCore` — no AppKit/SwiftUI. Tool protocol, `ToolRegistry`, `PermissionPolicy`, `AuditLog`, `ChangeFeed`, `JSONFileStore`, `AppPaths`, `SyncRecord`, `WakeScheduler`, and platform protocols (`Ringer`, `ShortcutRunning`).
-- Feature modules depend only on `ApnumCore`, never on each other: `ApnumAlarms`, `ApnumTimers`, `ApnumNotes`, `ApnumCalendar`, `ApnumSystem`.
+- Feature modules depend only on `ApnumCore`, never on each other: `ApnumAlarms`, `ApnumTimers`, `ApnumNotes`, `ApnumCalendar`, `ApnumSystem`, `ApnumSky` (astronomy ported from aarshj.me: `SkyEngine` → `SkyScene`/`SkySummary`, `SkyService`, weather).
+- The pixel scene (`Pixel*.swift` in the app) draws a `SkyScene` in a layer-backed NSView at 20 fps and pauses when hidden or the window is not key.
 - `ApnumApp` — the SwiftUI app (a main window with a sidebar of `AppSection`s, a menu bar glance and Settings) and the composition root. `AppModel` builds every service, collects their tools into one `ToolRegistry`, drives alarms and timers with one `WakeScheduler`, and keeps main-actor snapshots for SwiftUI. Views perform every change with `model.run("tool.name", jsonInput)`, the same JSON path agents and the phone use.
 
 The rule that makes agents easy later: **every action is a `Tool`**. The UI may read service state directly for display, but anything that changes state goes through the registry, so the UI, agents and the phone all get the same permissions and audit trail.

@@ -11,13 +11,24 @@ struct MenuBarGlance: View {
         TimelineView(.everyMinute) { context in
             let now = context.date
             VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .lastTextBaseline) {
-                    ClockText(now, size: 40, weight: .thin)
-                    Spacer()
-                    Text(now.formatted(.dateTime.weekday(.wide).day().month()))
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                // A still of the living sky with the time on it.
+                ZStack(alignment: .topLeading) {
+                    if let scene = model.skyScene {
+                        PixelSkyView(scene: scene, animated: false, pixelSize: 2)
+                    } else {
+                        Rectangle().fill(Sky.day)
+                    }
+                    VStack(alignment: .leading, spacing: 0) {
+                        ClockText(now, size: 40, weight: .thin)
+                        Text(glanceSubtitle(now))
+                            .font(.callout.weight(.medium))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(12)
+                    .environment(\.colorScheme, (model.skyScene?.isDark ?? true) ? .dark : .light)
                 }
+                .frame(height: 150)
+                .clipShape(.rect(cornerRadius: 16, style: .continuous))
 
                 DayRibbon(now: now, compact: true)
                     .frame(height: 30)
@@ -55,6 +66,7 @@ struct MenuBarGlance: View {
                             Task { await model.run("timer.start", ["minutes": .number(Double(minutes))]) }
                         }
                         .buttonStyle(.pill(width: 70))
+                        .focusEffectDisabled()
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -84,6 +96,15 @@ struct MenuBarGlance: View {
             .padding(16)
             .frame(width: 340)
         }
+    }
+}
+
+extension MenuBarGlance {
+    /// "Friday, 13 Nov, Night in Pune".
+    func glanceSubtitle(_ now: Date) -> String {
+        let date = now.formatted(.dateTime.weekday(.wide).day().month())
+        guard let summary = model.skySummary else { return date }
+        return "\(date), \(summary.skyName.lowercased()) in \(summary.placeName)"
     }
 }
 

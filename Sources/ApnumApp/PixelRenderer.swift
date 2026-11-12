@@ -9,6 +9,8 @@ import Foundation
 final class PixelRenderer {
     /// Scene pixels are this many points wide.
     static let pixel = 4
+    /// Points per scene pixel; smaller for small views such as the menu bar glance.
+    var scale = PixelRenderer.pixel
     /// Fixed so the landscape is the same on every launch.
     static let rangeSeed = 8_675_309
 
@@ -156,8 +158,8 @@ final class PixelRenderer {
 
     /// Renders one frame for `size` points. When `animated` is false the scene holds still.
     func render(scene newScene: SkyScene, size: CGSize, now: Date, animated: Bool) -> Output? {
-        let w = max(80, Int((size.width / CGFloat(Self.pixel)).rounded(.up)))
-        let h = max(60, Int((size.height / CGFloat(Self.pixel)).rounded(.up)))
+        let w = max(80, Int((size.width / CGFloat(scale)).rounded(.up)))
+        let h = max(60, Int((size.height / CGFloat(scale)).rounded(.up)))
         scene = newScene
         let print = Self.fingerprint(of: newScene, width: w, height: h)
         if w != W || h != H {

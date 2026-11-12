@@ -9,6 +9,8 @@ import SwiftUI
 struct PixelSkyView: View {
     let scene: SkyScene
     var animated: Bool = true
+    /// Points per scene pixel (4 matches aarshj.me; use 2 for small views).
+    var pixelSize: Int = PixelRenderer.pixel
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -22,7 +24,7 @@ struct PixelSkyView: View {
     }
 
     var body: some View {
-        PixelSkyHost(scene: scene, animated: animated && !reduceMotion)
+        PixelSkyHost(scene: scene, animated: animated && !reduceMotion, pixelSize: pixelSize)
             .accessibilityHidden(true)
     }
 }
@@ -32,10 +34,12 @@ struct PixelSkyView: View {
 private struct PixelSkyHost: NSViewRepresentable {
     let scene: SkyScene
     let animated: Bool
+    let pixelSize: Int
 
     func makeNSView(context: Context) -> PixelSkyNSView { PixelSkyNSView() }
 
     func updateNSView(_ view: PixelSkyNSView, context: Context) {
+        view.setPixelSize(pixelSize)
         view.configure(scene: scene, animated: animated)
     }
 
@@ -60,6 +64,12 @@ private final class PixelSkyNSView: NSView {
     private var observers: [NSObjectProtocol] = []
     private var tracking: NSTrackingArea?
     private let ignoreFocus = ProcessInfo.processInfo.environment["APNUM_SKY_ALWAYS"] == "1"
+
+    func setPixelSize(_ size: Int) {
+        guard size != renderer.scale, size > 0 else { return }
+        renderer.scale = size
+        needsDisplay = true
+    }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -173,7 +183,7 @@ private final class PixelSkyNSView: NSView {
         guard let out = renderer.render(scene: scene, size: bounds.size, now: Date(), animated: shouldRun) else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        let k = CGFloat(PixelRenderer.pixel)
+        let k = CGFloat(renderer.scale)
         imageLayer.frame = CGRect(x: 0, y: bounds.height - CGFloat(out.height) * k, width: CGFloat(out.width) * k, height: CGFloat(out.height) * k)
         imageLayer.contents = out.image
         CATransaction.commit()

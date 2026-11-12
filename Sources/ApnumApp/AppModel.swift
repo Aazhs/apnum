@@ -58,6 +58,8 @@ final class AppModel {
     private(set) var skyScene: SkyScene?
     private(set) var skySummary: SkySummary?
     private(set) var skySettings: SkySettings?
+    /// The real sky colour from midnight to midnight, for the day ribbon.
+    private(set) var skyDayColors: [RGB] = []
     /// A time the user is scrubbing to on Today; nil means now.
     var skyPreview: Date? {
         didSet { Task { await refreshSky() } }
@@ -199,6 +201,7 @@ final class AppModel {
         skyScene = await sky.scene(at: date)
         skySummary = await sky.summary(at: date)
         skySettings = await sky.settings()
+        skyDayColors = await sky.dayColors(for: date)
     }
 
     func requestCalendarAccess() async {
