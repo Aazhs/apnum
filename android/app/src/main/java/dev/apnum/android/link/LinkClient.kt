@@ -227,6 +227,25 @@ class LinkClient(
         sendJson(Messages.event(topic, data))
     }
 
+    private val outbox = dev.apnum.android.phone.EventQueue()
+
+    /**
+     * Sends now when connected. Otherwise keeps the event (the last 20, for 10 minutes), starts the connection
+     * and skips any backoff wait; the event goes out right after the next hello.
+     */
+    fun sendEventReliably(topic: String, data: JsonObject) {
+        if (sendJson(Messages.event(topic, data))) return
+        outbox.add(topic, data)
+        start()
+        wake.trySend(Unit)
+        // Raced with a connection that came up between the failed send and the add.
+        if (active != null) flushOutbox()
+    }
+
+    private fun flushOutbox() {
+        outbox.drain().forEach { sendJson(Messages.event(it.topic, it.data)) }
+    }
+
     private fun sendJson(o: JsonObject): Boolean = synchronized(sendLock) {
         val a = active ?: return false
         lastSentMs = nowMs()
@@ -350,7 +369,10 @@ class LinkClient(
             lastSentMs = nowMs()
             _macDevice.value = macInfo
             _connection.value = ConnectionState.Connected
-            sendJson(Messages.hello(device, registry.descriptors()))
+            val toolList = registry.descriptors()
+            sendJson(Messages.hello(device, toolList))
+            runCatching { android.util.Log.d("apnum", "hello tools: " + toolList.joinToString(",") { it.name }) }
+            flushOutbox()
 
             val heartbeat = launch {
                 while (isActive) {

@@ -10,6 +10,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.Network
+import android.net.wifi.WifiManager
+import android.os.Build
+import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -51,8 +54,9 @@ class LinkService : LifecycleService() {
                 if (mac == null) {
                     stopSelf()
                 } else {
-                    val text = if (state == ConnectionState.Connected) "Connected to ${mac.name}" else "Looking for your Mac"
-                    nm.notify(NOTIFICATION_ID, build(text))
+                    val connected = state == ConnectionState.Connected
+                    setHeld(connected)
+                    nm.notify(NOTIFICATION_ID, build(if (connected) "Connected to ${mac.name}" else "Looking for your Mac"))
                 }
             }
         }
@@ -60,10 +64,39 @@ class LinkService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        // Started again (by an SMS, the app opening, a boot): reconnect now instead of waiting out a backoff.
+        ApnumApp.graph(this).link.apply { start(); networkChanged(lost = false) }
         return START_STICKY
     }
 
+    /**
+     * While connected, hold a partial wake lock (so the 20 s ping and incoming frames are handled with the screen
+     * off) and a low-latency Wi-Fi lock (so the radio does not sleep between packets). Both are released when the
+     * link is down, so an unreachable Mac costs no battery.
+     */
+    @Suppress("DEPRECATION")
+    private fun setHeld(on: Boolean) {
+        if (on) {
+            if (wakeLock == null) {
+                wakeLock = getSystemService(PowerManager::class.java).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "apnum:link").apply { setReferenceCounted(false); acquire() }
+            }
+            if (wifiLock == null) {
+                val mode = if (Build.VERSION.SDK_INT >= 29) WifiManager.WIFI_MODE_FULL_LOW_LATENCY else WifiManager.WIFI_MODE_FULL_HIGH_PERF
+                wifiLock = runCatching {
+                    (applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager).createWifiLock(mode, "apnum:link").apply { setReferenceCounted(false); acquire() }
+                }.getOrNull()
+            }
+        } else {
+            runCatching { wakeLock?.release() }; wakeLock = null
+            runCatching { wifiLock?.release() }; wifiLock = null
+        }
+    }
+
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var wifiLock: WifiManager.WifiLock? = null
+
     override fun onDestroy() {
+        setHeld(false)
         runCatching { connectivity.unregisterNetworkCallback(networkCallback) }
         super.onDestroy()
     }
@@ -79,6 +112,7 @@ class LinkService : LifecycleService() {
             .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setContentIntent(open)
+            .addAction(0, "Send clipboard to Mac", dev.apnum.android.phone.ClipboardSync.sendIntent(this))
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }

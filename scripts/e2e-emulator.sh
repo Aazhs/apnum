@@ -8,6 +8,8 @@
 # Leaves the Mac instance running; its data is in <workdir>/home (audit.jsonl shows the phone's calls).
 set -eu
 cd "$(dirname "$0")/.."
+# Never touch a physical phone: every adb call below goes to the emulator unless ANDROID_SERIAL says otherwise.
+export ANDROID_SERIAL="${ANDROID_SERIAL:-emulator-5554}"
 W="${1:-$(mktemp -d)}"
 mkdir -p "$W/home"
 rm -f "$W/home/pairing-uri.txt"

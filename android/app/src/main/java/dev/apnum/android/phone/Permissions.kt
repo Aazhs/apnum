@@ -19,6 +19,8 @@ enum class Capability(val title: String, val why: String, val runtime: List<Stri
     Contacts("Contacts", "Shows names instead of numbers and lets the Mac search your contacts.", listOf(Manifest.permission.READ_CONTACTS)),
     Calls("Phone and calls", "Lets the Mac see call state, start a call, and hang up or reject one.",
         listOf(Manifest.permission.READ_PHONE_STATE, Manifest.permission.CALL_PHONE, Manifest.permission.ANSWER_PHONE_CALLS)),
+    CallLog("Call history", "Lets the Mac list your recent calls. Sideloaded apps may need Allow restricted settings in App info first.",
+        listOf(Manifest.permission.READ_CALL_LOG)),
     NotificationAccess("Notification access", "Lets the Mac see your phone's notifications and dismiss them.", emptyList()),
     PostNotifications("Show notifications", "Shows the small \"Connected to your Mac\" status.",
         if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()),

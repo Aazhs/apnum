@@ -63,8 +63,17 @@ class AlarmRepository(
         clearSnooze(id)
     }
 
-    /** A one-time alarm turns itself off once it has rung. */
-    fun fired(id: String) {
+    /** Local only (never synced): when each alarm last started ringing, so a wake-up inside the due window cannot ring it twice. */
+    private val rangAt = HashMap<String, Instant>()
+
+    /** Starting to ring changes nothing that syncs; it only remembers this occurrence rang. */
+    @Synchronized fun ringStarted(id: String) { rangAt[id] = clock() }
+
+    @Synchronized fun recentlyRang(id: String, withinSeconds: Long = 45): Boolean =
+        rangAt[id]?.let { clock().isBefore(it.plusSeconds(withinSeconds)) } == true
+
+    /** The ring has ended (stopped here, stopped on the Mac, or timed out): a one-time alarm turns itself off. Snooze does not call this. */
+    fun ringEnded(id: String) {
         val a = get(id) ?: return
         if (a.repeatDays.isEmpty() && a.isEnabled) store.put(a.copy(isEnabled = false, updatedAt = clock()))
     }

@@ -80,8 +80,8 @@ class AlarmControllerTest {
         assertEquals(listOf(Ringing(a.id, "Gym", 7, 0)), c.ringing.value)
         assertEquals(1, env.services)
         assertEquals(listOf(a.id), env.events.last().second["ids"]!!.jsonArray.map { it.toString().trim('"') })
-        // One-shot turns itself off after ringing.
-        assertFalse(repo.get(a.id)!!.isEnabled)
+        // Starting to ring changes nothing that syncs.
+        assertTrue(repo.get(a.id)!!.isEnabled)
         // The Mac lists it, then no longer: the phone stops, without calling the Mac back.
         c.onMacRinging(MacRingingItem.parse(Json.parseToJsonElement("""{"items":[{"id":"${a.id.lowercase()}","kind":"alarm","title":"Gym","body":"","canSnooze":true}]}""").jsonObject))
         assertEquals(1, c.ringing.value.size)
@@ -89,6 +89,50 @@ class AlarmControllerTest {
         assertTrue(c.ringing.value.isEmpty())
         runCurrent()
         assertTrue(env.macCalls.isEmpty())
+        assertFalse(repo.get(a.id)!!.isEnabled) // the ring ended on the Mac, so the one-shot is off here too
+    }
+
+    @Test fun ringStartLeavesTheRecordIdenticalAndQueuesNothing() = runTest {
+        val repo = repo(); val env = FakeEnv()
+        val a = repo.create(7, 0, "Gym", emptySet(), 5)
+        val before = AlarmCodec.toJson(repo.get(a.id)!!).toString()
+        val dirtyBefore = repo.store.dirtyRecords().map { it.id to it.updatedAt }
+        val c = AlarmController(repo, env, backgroundScope)
+        c.ring(a.id)
+        assertEquals(before, AlarmCodec.toJson(repo.get(a.id)!!).toString())
+        assertEquals(dirtyBefore, repo.store.dirtyRecords().map { it.id to it.updatedAt })
+    }
+
+    @Test fun stoppingDisablesAOneShotAndSnoozeKeepsItOn() = runTest {
+        val repo = repo(); val env = FakeEnv()
+        val a = repo.create(7, 0, "", emptySet(), 5)
+        val b = repo.create(7, 0, "", emptySet(), 5)
+        val c = AlarmController(repo, env, backgroundScope)
+        c.ring(a.id); c.ring(b.id)
+        c.snooze(a.id)
+        assertTrue(repo.get(a.id)!!.isEnabled)
+        c.stop(b.id)
+        assertFalse(repo.get(b.id)!!.isEnabled)
+    }
+
+    @Test fun timeoutDisablesAOneShot() = runTest {
+        val repo = repo(); val env = FakeEnv()
+        val a = repo.create(7, 0, "", emptySet(), 5)
+        val c = AlarmController(repo, env, backgroundScope)
+        c.ring(a.id)
+        advanceTimeBy(10 * 60_000L + 1_000L); runCurrent()
+        assertFalse(repo.get(a.id)!!.isEnabled)
+    }
+
+    @Test fun aWakeInsideTheWindowDoesNotRingTwice() = runTest {
+        val repo = repo(); val env = FakeEnv()
+        val a = repo.create(7, 0, "", setOf(DayOfWeek.FRIDAY), 5) // 2026-11-13 is a Friday
+        val c = AlarmController(repo, env, backgroundScope)
+        c.ringDue(now.plusSeconds(1), java.time.ZoneId.of("UTC"))
+        c.stop(a.id)
+        c.ringDue(now.plusSeconds(5), java.time.ZoneId.of("UTC"))
+        assertTrue(c.ringing.value.isEmpty())
+        assertTrue(repo.get(a.id)!!.isEnabled) // repeating alarms stay enabled
     }
 
     @Test fun stopAndSnoozeOnThePhoneTellTheMac() = runTest {

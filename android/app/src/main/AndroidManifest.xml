@@ -20,6 +20,7 @@
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.CALL_PHONE" />
     <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
@@ -92,6 +93,27 @@
             android:showWhenLocked="true"
             android:turnScreenOn="true"
             android:taskAffinity="" />
+
+        <receiver android:name=".phone.FindStopReceiver" android:exported="false" />
+
+        <activity
+            android:name=".phone.ClipboardSendActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Apnum.Transparent" />
+
+        <service
+            android:name=".phone.SendClipboardTile"
+            android:exported="true"
+            android:icon="@drawable/ic_stat_link"
+            android:label="Send clipboard to Mac"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
         <receiver
             android:name=".phone.SmsReceiver"

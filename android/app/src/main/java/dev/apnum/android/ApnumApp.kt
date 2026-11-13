@@ -48,7 +48,8 @@ class AppGraph(app: Context) {
     val store = PrefsStore(app)
     private val identity = store.identity()
     val registry = ToolRegistry { Perms.has(app, it) }
-    val ringer = Ringer(app, scope)
+    val ringer = Ringer(app, scope) { active -> link.sendEvent("ring", buildJsonObject { put("active", active) }) }
+    val clipboard = dev.apnum.android.phone.ClipboardSync(app) { text, id -> link.sendEvent("clipboard", buildJsonObject { put("text", text); put("id", id) }) }
     val calls: CallMonitor = CallMonitor(app) { state, number ->
         link.sendEvent("call.state", buildJsonObject {
             put("state", state); put("number", number); put("contactName", phoneTools.contactName(number))
@@ -80,6 +81,7 @@ class AppGraph(app: Context) {
     init {
         phoneTools.registerAll(registry)
         link.setLocalNetworkAllowed(Build.VERSION.SDK_INT < 37 || Perms.has(app, "android.permission.ACCESS_LOCAL_NETWORK"))
+        scope.launch { link.macEvents.collect { e -> if (e.topic == "clipboard") e.data.str("text")?.let { clipboard.applyFromMac(it) } } }
         scope.launch { alarmStore.live.collect { alarmScheduler.reschedule() } }
         scope.launch {
             link.macEvents.collect { e -> if (e.topic == "ringing") alarmController.onMacRinging(MacRingingItem.parse(e.data)) }
