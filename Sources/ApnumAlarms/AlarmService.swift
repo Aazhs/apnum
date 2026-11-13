@@ -20,6 +20,9 @@ public actor AlarmService {
     private var currentSettings = AlarmSettings()
     private var ringingRequests: [String: RingRequest] = [:]
     private var lastTick: Date?
+    /// When the user last changed an alarm's schedule ON THIS MAC. Edits that arrive by sync are not
+    /// recorded here, so the phone touching a record at ring time cannot make the Mac skip that ring.
+    private var localEditAt: [UUID: Date] = [:]
     private var mirrorError: String?
     /// True only after a mirror sync has succeeded; apnum keeps ringing itself until then.
     private var mirrorHealthy = false
@@ -71,6 +74,7 @@ public actor AlarmService {
         let alarm = Alarm(
             hour: hour, minute: minute, label: label, repeatDays: repeatDays, snoozeMinutes: snoozeMinutes,
             sound: sound?.isEmpty == true ? nil : sound, createdAt: clock())
+        localEditAt[alarm.id] = alarm.createdAt
         try await commit(all + [alarm])
         return alarm
     }
@@ -94,6 +98,7 @@ public actor AlarmService {
         a.isEnabled = isEnabled ?? a.isEnabled
         a.snoozeMinutes = snoozeMinutes ?? a.snoozeMinutes
         if let sound { a.sound = sound.isEmpty ? nil : sound }
+        if reschedules { localEditAt[id] = clock() }
         if reschedules || isEnabled == false {
             a.snoozedUntil = nil
             if reschedules { a.lastFiredAt = nil }
@@ -264,7 +269,11 @@ public actor AlarmService {
         // missing or failing, apnum rings itself so an alarm is never silent.
         let mirrorMode = currentSettings.mirrorToClockApp && mirrorHealthy
         for index in all.indices {
-            var from = max(lastTick ?? .distantPast, all[index].updatedAt, all[index].lastFiredAt ?? .distantPast)
+            // While running, a due time counts if it falls after the last tick, the last local edit and the
+            // last ring. Only the first tick after launch falls back to `updatedAt`.
+            var from = max(
+                lastTick ?? all[index].updatedAt, localEditAt[all[index].id] ?? .distantPast,
+                all[index].lastFiredAt ?? .distantPast)
             var iterations = 0
             while iterations < 400, let due = nextFireDate(for: all[index], after: from), due <= now {
                 iterations += 1

@@ -30,8 +30,17 @@ public final class WakeScheduler: Sendable {
                 let target = await next(now)
                 let wait = min(max(target.map { $0.timeIntervalSince(now) } ?? cap, 0), cap)
                 guard wait > 0 else { continue }
+                // macOS delays the timers of background apps (App Nap), by seconds or more. For the last
+                // stretch before something is due, tell the system this is time-critical so an alarm
+                // rings on the second. Further out, napping is fine and keeps the app at 0% CPU.
+                let precise = target.map { $0.timeIntervalSince(now) <= 150 } ?? false
+                let activity = precise
+                    ? ProcessInfo.processInfo.beginActivity(
+                        options: [.userInitiatedAllowingIdleSystemSleep, .latencyCritical], reason: "An alarm or timer is about to ring")
+                    : nil
+                defer { if let activity { ProcessInfo.processInfo.endActivity(activity) } }
                 await withTaskGroup(of: Void.self) { group in
-                    group.addTask { try? await Task.sleep(for: .seconds(wait)) }
+                    group.addTask { try? await Task.sleep(for: .seconds(wait), tolerance: precise ? .milliseconds(20) : .seconds(2)) }
                     group.addTask { await signal.wait() }
                     _ = await group.next()
                     group.cancelAll()

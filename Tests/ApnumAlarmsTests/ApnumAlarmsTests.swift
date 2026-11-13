@@ -177,6 +177,18 @@ struct Fixture {
         #expect(await f.service.alarm(id: a.id)?.isEnabled == false)  // one-shot done
     }
 
+    @Test func aSyncFromThePhoneAtRingTimeDoesNotSkipTheRing() async throws {
+        // The phone rings first and pushes its copy a second later; the Mac wakes a little late.
+        let f = Fixture()
+        let a = try await f.service.create(hour: 7, minute: 0)
+        await f.service.tick(now: date(15, 6, 59))
+        var fromPhone = a
+        fromPhone.updatedAt = date(15, 7, 0).addingTimeInterval(1)
+        _ = try await f.service.sync(records: [fromPhone], since: nil)
+        await f.service.tick(now: date(15, 7, 0).addingTimeInterval(3))
+        #expect(f.ringer.started.count == 1)
+    }
+
     @Test func stillRingsWhenTheClockMirrorIsFailing() async throws {
         // Mirroring is on but the shortcut is missing: an alarm must never be silent.
         let mirror = FakeMirror()
