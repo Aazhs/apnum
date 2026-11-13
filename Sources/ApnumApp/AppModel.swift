@@ -31,6 +31,7 @@ final class AppModel {
     @ObservationIgnored let calendar: CalendarService
     @ObservationIgnored let sky: SkyService
     @ObservationIgnored let link: LinkService
+    @ObservationIgnored let clipboardSync = ClipboardSync()
     @ObservationIgnored private let scheduler = WakeScheduler()
     @ObservationIgnored private var started = false
 
@@ -76,6 +77,8 @@ final class AppModel {
     var pairedDevice: PairedDevice?
     var linkFingerprint: String?
     var phone = PhoneState()
+    /// Made-up call log for the demo phone.
+    @ObservationIgnored var demoCalls: [PhoneCallLogEntry] = []
     /// The pairing code and QR link while a pairing is open.
     var pairingOffer: PairingOffer?
     /// The 6-digit number to compare with the phone when it paired by typing the code.
@@ -84,7 +87,7 @@ final class AppModel {
     var tools: [ToolDescriptor] = []
     /// APNUM_DEMO=1 with APNUM_PHONE_DEMO=connected shows a made-up connected phone, with no networking.
     @ObservationIgnored let phoneDemo = ProcessInfo.processInfo.environment["APNUM_DEMO"] == "1"
-        && ProcessInfo.processInfo.environment["APNUM_PHONE_DEMO"] == "connected"
+        && ["connected", "ringing"].contains(ProcessInfo.processInfo.environment["APNUM_PHONE_DEMO"] ?? "")
 
     private(set) var recentActivity: [AuditEntry] = []
     var lastError: String?

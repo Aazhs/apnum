@@ -14,6 +14,10 @@ extension AppModel {
         }
         await link.attach(registry: registry)
         await link.setOnCode { [weak self] code in await self?.received(code: code) }
+        await link.setOnClipboard { [weak self] text in await self?.clipboardSync.receive(text) }
+        clipboardSync.send = { [link] text in
+            await link.sendEvent(topic: "clipboard", data: ["text": .string(text), "id": .string(UUID().uuidString)])
+        }
         do { try await link.load() } catch { report(error) }
         if !isDemo || environment["APNUM_LINK"] == "1" {
             do { try await link.start() } catch { report(error) }
@@ -37,6 +41,9 @@ extension AppModel {
         phone = await link.phoneState()
         pairingSafety = await link.pairingSafetyNumber()
         if case .connected = linkStatus { pairingOffer = nil }
+        var connected = false
+        if case .connected = linkStatus { connected = true }
+        clipboardSync.setActive(connected && linkSettings.syncClipboard)
         if let offer = pairingOffer, offer.expiresAt < Date(), pairingSafety == nil { pairingOffer = nil }
         tools = registry.descriptors
     }
@@ -61,10 +68,11 @@ extension AppModel {
         await refreshLink()
     }
 
-    func setLink(enabled: Bool? = nil, autoCopyCodes: Bool? = nil, trustDangerous: Bool? = nil) async {
+    func setLink(enabled: Bool? = nil, autoCopyCodes: Bool? = nil, syncClipboard: Bool? = nil, trustDangerous: Bool? = nil) async {
         var input: [String: JSONValue] = [:]
         if let enabled { input["enabled"] = .bool(enabled) }
         if let autoCopyCodes { input["autoCopyCodes"] = .bool(autoCopyCodes) }
+        if let syncClipboard { input["syncClipboard"] = .bool(syncClipboard) }
         if let trustDangerous { input["trustDangerous"] = .bool(trustDangerous) }
         await run("link.settings.set", .object(input))
         await refreshLink()
@@ -90,17 +98,59 @@ extension AppModel {
 
     func hasTool(_ name: String) -> Bool { phoneDemo || tools.contains { $0.name == name } }
 
-    /// Sends the Mac clipboard text to the phone.
-    func sendClipboardToPhone() async {
-        guard let text = LinkText.string(await run("mac.clipboard.get")?["text"]), !text.isEmpty else { return }
-        await run("phone.clipboard.set", ["text": .string(text)])
+    /// The "Send now" fallback for clipboard sync.
+    func sendClipboardNow() { clipboardSync.sendNow() }
+
+    /// Starts or stops "Find my phone".
+    func findMyPhone(stop: Bool) async {
+        if phoneDemo { phone.findRinging = !stop; return }
+        await run("phone.ring", stop ? ["stop": true] : .object([:]))
+        await refreshLink()
     }
 
-    /// Copies the phone's clipboard text onto the Mac.
-    func getPhoneClipboard() async {
-        guard let out = await run("phone.clipboard.get") else { return }
-        let text = LinkText.string(out) ?? LinkText.string(out["text"])
-        if let text, !text.isEmpty { await run("mac.clipboard.set", ["text": .string(text)]) }
+    /// Dismisses every clearable notification on the phone.
+    func clearPhoneNotifications() async {
+        guard !phoneDemo else { phone.notifications = []; return }
+        guard await run("phone.notifications.clear", .object([:])) != nil else { return }
+        await link.refreshPhone()
+        await refreshLink()
+    }
+
+    struct RecentCalls {
+        var calls: [PhoneCallLogEntry] = []
+        /// The phone's explanation when it could not give the log (permission, for instance).
+        var message: String?
+    }
+
+    /// The call log, for the Calls panel. Failures come back as a message rather than the global error banner.
+    func recentCalls(limit: Int = 8) async -> RecentCalls {
+        if phoneDemo { return RecentCalls(calls: demoCalls) }
+        guard tools.contains(where: { $0.name == "phone.calls.recent" }) else { return RecentCalls() }
+        do {
+            let out = try await registry.callJSON("phone.calls.recent", input: ["limit": .number(Double(limit))], caller: .ui)
+            return RecentCalls(calls: Array(LinkService.parseCallLog(out).prefix(limit)))
+        } catch {
+            return RecentCalls(message: Self.plainMessage(error))
+        }
+    }
+
+    private static func plainMessage(_ error: any Error) -> String {
+        switch error as? ToolError {
+        case .notFound(let m)?, .invalidInput(let m)?, .denied(let m)?, .unavailable(let m)?, .failed(let m)?: m
+        case nil: error.localizedDescription
+        }
+    }
+
+    /// Live contact matches while typing in the Calls panel (errors are ignored: it is only a suggestion).
+    func searchContacts(_ query: String) async -> JSONValue? {
+        if phoneDemo {
+            let q = query.lowercased()
+            let all: [(String, [String])] = [("Meera", ["+91 98765 43210"]), ("Mehul Shah", ["+91 90000 11122", "+91 80000 33344"]), ("Dad", ["+91 91234 56780"])]
+            let hits = all.filter { $0.0.lowercased().contains(q) || $0.1.contains { $0.contains(q) } }
+            return .array(hits.map { ["name": .string($0.0), "numbers": .array($0.1.map { .string($0) })] })
+        }
+        guard tools.contains(where: { $0.name == "phone.contacts.search" }) else { return nil }
+        return try? await registry.callJSON("phone.contacts.search", input: ["query": .string(query)], caller: .ui)
     }
 
     func copyToClipboard(_ text: String) async {
@@ -145,9 +195,18 @@ extension AppModel {
             PhoneNotification(key: "n3", app: "Gmail", title: "Your receipt from Third Wave Coffee", text: "Thanks for your order of two flat whites", posted: ago(54)),
         ]
         state.latestCode = PhoneCode(code: "482913", from: "HDFCBK", date: ago(3))
+        state.findRinging = environment["APNUM_PHONE_DEMO"] == "ringing"
         phone = state
+        let now2 = now
+        demoCalls = [
+            PhoneCallLogEntry(number: "+91 98765 43210", contactName: "Meera", kind: .incoming, date: now2.addingTimeInterval(-25 * 60), durationSec: 184),
+            PhoneCallLogEntry(number: "+91 91234 56780", contactName: "Dad", kind: .missed, date: now2.addingTimeInterval(-3 * 3600), durationSec: 0),
+            PhoneCallLogEntry(number: "+91 80000 11234", kind: .outgoing, date: now2.addingTimeInterval(-26 * 3600), durationSec: 62),
+            PhoneCallLogEntry(number: "+91 90000 11122", contactName: "Mehul Shah", kind: .incoming, date: now2.addingTimeInterval(-50 * 3600), durationSec: 410),
+        ]
         let phoneTools: [JSONValue] = [
             ["name": "phone.sms.send", "summary": "Send an SMS.", "tier": "dangerous", "inputSchema": [:]],
+            ["name": "phone.notifications.clear", "summary": "Clear notifications.", "tier": "write", "inputSchema": [:]],
             ["name": "phone.call.dial", "summary": "Start a phone call.", "tier": "dangerous", "inputSchema": [:]],
         ]
         tools = registry.descriptors + phoneTools.compactMap { try? $0.decode(ToolDescriptor.self) }
