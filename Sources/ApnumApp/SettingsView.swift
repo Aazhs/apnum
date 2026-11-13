@@ -4,6 +4,7 @@ import ApnumCore
 import AppKit
 import ServiceManagement
 import ApnumSky
+import ApnumUpdate
 import SwiftUI
 import UserNotifications
 
@@ -245,12 +246,76 @@ private struct AboutSettings: View {
                 }
             }
             .themedRows(theme)
+            Section("Software update") {
+                UpdateSection()
+            }
+            .themedRows(theme)
             Section {
                 DiagnosticsRow()
             }
             .themedRows(theme)
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Current version, a check button, and when a newer release exists its notes and an Update now button.
+private struct UpdateSection: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage(UpdateModel.autoKey) private var automatic = true
+
+    var body: some View {
+        let u = model.updates
+        LabeledContent("Current version") {
+            HStack(spacing: 10) {
+                Text(u.currentVersionText).foregroundStyle(.secondary)
+                Button("Check for updates") { Task { await u.check() } }
+                    .buttonStyle(.pill)
+                    .disabled(u.isBusy)
+            }
+        }
+        switch u.phase {
+        case .checking:
+            Label("Checking…", systemImage: "arrow.triangle.2.circlepath").foregroundStyle(.secondary)
+        case .upToDate:
+            Label("apnum is up to date", systemImage: "checkmark.circle").foregroundStyle(.secondary)
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 8) {
+                Label(message, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout).foregroundStyle(.orange)
+                if u.canInstallAnyway {
+                    Button("Install anyway") { Task { await u.install(allowAdHoc: true) } }
+                        .buttonStyle(.pill(.orange))
+                }
+            }
+        default: EmptyView()
+        }
+        if let status = u.status, status.available {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Version \(status.latest) is available").font(.headline)
+                if !status.notes.isEmpty {
+                    ScrollView {
+                        Text(status.notes)
+                            .font(.callout)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 120)
+                }
+                switch u.phase {
+                case .downloading(let fraction):
+                    ProgressView(value: fraction) { Text("Downloading…").font(.callout) }
+                case .installing:
+                    ProgressView { Text("Installing and restarting…").font(.callout) }
+                default:
+                    Button("Update now") { Task { await u.install() } }
+                        .buttonStyle(.pill(.orange))
+                        .disabled(u.isBusy)
+                }
+            }
+        }
+        Toggle("Check for updates automatically", isOn: $automatic)
+            .onChange(of: automatic) { _, _ in u.scheduleAutomaticChecks() }
     }
 }
 

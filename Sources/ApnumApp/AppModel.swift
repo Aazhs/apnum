@@ -6,6 +6,7 @@ import ApnumNotes
 import ApnumSky
 import ApnumSystem
 import ApnumTimers
+import ApnumUpdate
 import Foundation
 import Observation
 import AppKit
@@ -32,6 +33,7 @@ final class AppModel {
     @ObservationIgnored let sky: SkyService
     @ObservationIgnored let link: LinkService
     @ObservationIgnored let clipboardSync = ClipboardSync()
+    @ObservationIgnored let updates = UpdateModel()
     @ObservationIgnored private let scheduler = WakeScheduler()
     @ObservationIgnored private var started = false
 
@@ -132,7 +134,7 @@ final class AppModel {
         self.link = link
         registry = ToolRegistry(
             tools: alarms.makeTools() + timers.makeTools() + notes.makeTools() + calendar.makeTools() + sky.makeTools()
-                + system.makeTools() + link.makeTools(),
+                + system.makeTools() + link.makeTools() + makeUpdateTools(controller: updates),
             policy: DefaultPermissionPolicy(trusted: { caller in await link.isTrusted(caller: caller) }),
             audit: audit)
         tools = registry.descriptors
@@ -176,6 +178,7 @@ final class AppModel {
             skyPreview = debugSkyDate
         }
         await refreshSky()
+        if !isDemo { updates.scheduleAutomaticChecks() }
         if ProcessInfo.processInfo.environment["APNUM_SCRUB"] == "1" { startScrub() }
         Task { [weak self, sky] in
             // The sky moves slowly: recompute once a minute, and let the service

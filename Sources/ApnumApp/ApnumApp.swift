@@ -100,7 +100,19 @@ struct MainView: View {
                 }
             }
             .scrollContentBackground(theme.isActive ? .hidden : .automatic)
-            .safeAreaInset(edge: .bottom) {
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+              VStack(spacing: 0) {
+                if model.updates.updateAvailable, let latest = model.updates.status?.latest {
+                    // One quiet line; it opens Settings, where the update lives.
+                    SettingsLink {
+                        Label("Update available: \(latest)", systemImage: "arrow.down.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                }
                 // The little world is always in view: a still of the scene under the sidebar.
                 if theme.isActive, let scene = model.skyScene {
                     PixelSkyView(scene: scene, animated: false, pixelSize: 2)
@@ -110,6 +122,7 @@ struct MainView: View {
                         .padding(10)
                         .help(model.skySummary.map { "\($0.skyName) in \($0.placeName)" } ?? "")
                 }
+              }
             }
             .background(theme.isActive ? theme.sidebar : Color.clear)
             .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
