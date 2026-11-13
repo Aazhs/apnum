@@ -17,7 +17,7 @@ struct ApnumApp: App {
         .commands { AppCommands(model: model) }
 
         MenuBarExtra(isInserted: $showInMenuBar) {
-            MenuBarGlance()
+            ThemedRoot { MenuBarGlance() }
                 .environment(model)
                 .task { await model.start() }
         } label: {
@@ -26,7 +26,7 @@ struct ApnumApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            SettingsView()
+            ThemedRoot { SettingsView() }
                 .environment(model)
         }
     }
@@ -83,6 +83,7 @@ struct MainView: View {
 
     var body: some View {
         @Bindable var model = model
+        let theme = model.theme(enabled: tintWithSky)
         NavigationSplitView {
             List(selection: $model.section) {
                 ForEach(AppSection.groups, id: \.title) { group in
@@ -95,9 +96,23 @@ struct MainView: View {
                     }
                 }
             }
+            .scrollContentBackground(theme.isActive ? .hidden : .automatic)
+            .safeAreaInset(edge: .bottom) {
+                // The little world is always in view: a still of the scene under the sidebar.
+                if theme.isActive, let scene = model.skyScene {
+                    PixelSkyView(scene: scene, animated: false, pixelSize: 2)
+                        .frame(height: 124)
+                        .clipShape(.rect(cornerRadius: 14, style: .continuous))
+                        .overlay { RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(theme.edge, lineWidth: 1) }
+                        .padding(10)
+                        .help(model.skySummary.map { "\($0.skyName) in \($0.placeName)" } ?? "")
+                }
+            }
+            .background(theme.isActive ? theme.sidebar : Color.clear)
             .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
         } detail: {
             detail(for: model.section)
+                .skyPage(theme)
                 .frame(minWidth: 560, minHeight: 480)
                 .overlay(alignment: .top) {
                     VStack(spacing: 8) {
@@ -117,7 +132,11 @@ struct MainView: View {
                 }
                 .animation(.easeOut(duration: 0.2), value: model.lastError)
         }
-        .tint(tintWithSky ? model.skyScene?.accent : nil)
+        .tint(theme.isActive ? theme.accent : nil)
+        .environment(\.skyTheme, theme)
+        .containerBackground(theme.isActive ? theme.background : Color(nsColor: .windowBackgroundColor), for: .window)
+        .preferredColorScheme(theme.isActive ? .dark : nil)
+        .animation(.linear(duration: 1.5), value: theme)
     }
 
     @ViewBuilder
@@ -186,5 +205,21 @@ struct AppCommands: Commands {
                     .keyboardShortcut(section.shortcut, modifiers: .command)
             }
         }
+    }
+}
+
+/// Applies the sky theme to a secondary window (Settings, the menu bar glance).
+struct ThemedRoot<Content: View>: View {
+    @Environment(AppModel.self) private var model
+    @AppStorage("tintWithSky") private var tintWithSky = true
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        let theme = model.theme(enabled: tintWithSky)
+        content
+            .skyPage(theme)
+            .tint(theme.isActive ? theme.accent : nil)
+            .environment(\.skyTheme, theme)
+            .preferredColorScheme(theme.isActive ? .dark : nil)
     }
 }

@@ -292,10 +292,10 @@ private struct SkySettingsTab: View {
             }
 
             Section {
-                Toggle("Tint apnum with the sky", isOn: $tintWithSky)
+                Toggle("Colour apnum with the sky", isOn: $tintWithSky)
                 Toggle("Animate the sky on Today", isOn: $animatedSky)
             } footer: {
-                Text("The accent colour follows the sky: blue by day, rose and amber around sunrise and sunset, moonlit lavender at night.")
+                Text("Every screen takes its colours from the sky over your city: deep green under a blue day, plum at dusk, indigo at night. Turn it off to use the system appearance.")
             }
         }
         .formStyle(.grouped)
