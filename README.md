@@ -82,6 +82,12 @@ Data lives in `~/Library/Application Support/apnum` (`APNUM_HOME` overrides it):
 
 `rust/apnum-link` holds the Noise XX encryption and pairing helpers shared with the Android app (UniFFI bindings for Swift and Kotlin). The xcframework is built into `build/` and not committed, so run `scripts/build-rust.sh mac` once before `swift build` (needs `rustup` with a stable toolchain). `scripts/build-rust.sh android` builds the `.so` files and Kotlin bindings (needs the Android NDK and `cargo-ndk`). Run its tests with `cargo test` in `rust/apnum-link`.
 
+## Phone link
+
+Pair an Android phone from the Phone screen (QR code or an 8-digit code) and the Mac can read its messages and one-time codes, show and dismiss notifications, place and end calls, ring it, and share the clipboard, while the phone can call the Mac's tools. Every action is a tool, so agents get the same access under the same permissions and audit log.
+
+Traffic stays on your local network, encrypted and mutually authenticated with a Noise XX handshake (the shared Rust core); each side pins the other's key at pairing, and the phone cannot run dangerous Mac actions unless you allow it. The wire format is in [docs/link-protocol.md](docs/link-protocol.md).
+
 ## Mirroring alarms into the Clock app
 
 Optional. See [docs/clock-shortcuts.md](docs/clock-shortcuts.md).

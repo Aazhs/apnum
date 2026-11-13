@@ -35,7 +35,7 @@ struct ApnumApp: App {
 // MARK: - Navigation
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case today, alarms, stopwatch, timers, calendar, reminders, notes, activity
+    case today, alarms, stopwatch, timers, calendar, reminders, notes, phone, activity
 
     var id: String { rawValue }
 
@@ -48,6 +48,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .calendar: "Calendar"
         case .reminders: "Reminders"
         case .notes: "Notes"
+        case .phone: "Phone"
         case .activity: "Activity"
         }
     }
@@ -61,6 +62,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .calendar: "calendar"
         case .reminders: "checklist"
         case .notes: "note.text"
+        case .phone: "smartphone"
         case .activity: "point.3.connected.trianglepath.dotted"
         }
     }
@@ -70,10 +72,11 @@ enum AppSection: String, CaseIterable, Identifiable {
         ("Time", [.today, .alarms, .stopwatch, .timers]),
         ("Plan", [.calendar, .reminders]),
         ("Write", [.notes]),
+        ("Phone", [.phone]),
         ("Agents", [.activity]),
     ]
 
-    /// ⌘1 … ⌘8
+    /// ⌘1 … ⌘9
     var shortcut: KeyEquivalent { KeyEquivalent(Character(String((Self.allCases.firstIndex(of: self) ?? 0) + 1))) }
 }
 
@@ -163,6 +166,7 @@ struct MainView: View {
         case .calendar: CalendarView()
         case .reminders: RemindersView()
         case .notes: NotesView()
+        case .phone: PhoneView()
         case .activity: ActivityView()
         }
     }

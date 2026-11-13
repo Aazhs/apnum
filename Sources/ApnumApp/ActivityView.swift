@@ -128,7 +128,7 @@ private struct ToolGroup: Identifiable {
     let tools: [ToolDescriptor]
     var id: String { title }
 
-    static let order = ["alarm", "timer", "stopwatch", "note", "calendar", "reminders", "mac", "shortcuts"]
+    static let order = ["alarm", "timer", "stopwatch", "note", "calendar", "reminders", "mac", "shortcuts", "phone", "link"]
 
     static func title(forDomain domain: String) -> String {
         switch domain {
@@ -139,6 +139,8 @@ private struct ToolGroup: Identifiable {
         case "reminders": "Reminders"
         case "mac": "Mac"
         case "shortcuts": "Shortcuts"
+        case "phone": "Phone"
+        case "link": "Phone link"
         default: domain.prefix(1).uppercased() + domain.dropFirst()
         }
     }

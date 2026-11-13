@@ -16,8 +16,10 @@ let package = Package(
         .target(name: "ApnumCore"),
         .executableTarget(
             name: "ApnumApp",
-            dependencies: ["ApnumCore"] + features.map { .target(name: $0) }
+            dependencies: ["ApnumCore", "ApnumLink"] + features.map { .target(name: $0) }
         ),
+        .target(name: "ApnumLink", dependencies: ["ApnumCore", "ApnumLinkCore"]),
+        .testTarget(name: "ApnumLinkTests", dependencies: ["ApnumLink", "ApnumLinkCore", "ApnumCore"]),
         .testTarget(name: "ApnumCoreTests", dependencies: ["ApnumCore"]),
         // Shared Rust link core. Run scripts/build-rust.sh mac once to create the xcframework.
         .binaryTarget(name: "ApnumLinkFFI", path: "build/rust/ApnumLinkFFI.xcframework"),

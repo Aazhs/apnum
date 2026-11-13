@@ -3,7 +3,7 @@
 #
 #   scripts/snapshot.sh <section> <out.png> [light|dark] [width] [height]
 #
-# section: today, alarms, stopwatch, timers, calendar, reminders, notes, activity, glance (menu bar window),
+# section: today, alarms, stopwatch, timers, calendar, reminders, notes, phone, activity, glance (menu bar window),
 #          or alarms:alarm-editor (the New alarm sheet)
 set -eu
 cd "$(dirname "$0")/.."
@@ -22,7 +22,7 @@ defaults write dev.apnum.mac "NSWindow Frame main" "100 100 $W $H 0 0 3000 2000"
 
 PREVIEW=""; [ "$SECTION" = glance ] && PREVIEW=glance && SECTION=today
 case "$SECTION" in *:*) PREVIEW="${SECTION#*:}"; SECTION="${SECTION%%:*}";; esac
-open -g -n -F "$RUN_APP" --env APNUM_PREVIEW="$PREVIEW" --env APNUM_DEMO=1 --env APNUM_HOME="$HOME_DIR" --env APNUM_SECTION="$SECTION" --env APNUM_APPEARANCE="$LOOK" --env APNUM_SKY_HOUR="${APNUM_SKY_HOUR:-}" --env APNUM_SKY_TIME="${APNUM_SKY_TIME:-}" --env APNUM_SKY_ALT="${APNUM_SKY_ALT:-}" --env APNUM_SKY_WEATHER="${APNUM_SKY_WEATHER:-}" --env APNUM_HORROR="${APNUM_HORROR:-}" --env APNUM_SKY_DEBUG="${APNUM_SKY_DEBUG:-}"
+open -g -n -F "$RUN_APP" --env APNUM_PREVIEW="$PREVIEW" --env APNUM_DEMO=1 --env APNUM_HOME="$HOME_DIR" --env APNUM_SECTION="$SECTION" --env APNUM_APPEARANCE="$LOOK" --env APNUM_SKY_HOUR="${APNUM_SKY_HOUR:-}" --env APNUM_SKY_TIME="${APNUM_SKY_TIME:-}" --env APNUM_SKY_ALT="${APNUM_SKY_ALT:-}" --env APNUM_SKY_WEATHER="${APNUM_SKY_WEATHER:-}" --env APNUM_HORROR="${APNUM_HORROR:-}" --env APNUM_SKY_DEBUG="${APNUM_SKY_DEBUG:-}" --env APNUM_PHONE_DEMO="${APNUM_PHONE_DEMO:-}" --env APNUM_LINK="${APNUM_LINK:-}" --env APNUM_LINK_AUTOPAIR="${APNUM_LINK_AUTOPAIR:-}"
 PID=""
 for _ in $(seq 1 40); do
   PID="$(pgrep -n -f "$RUN_APP/Contents/MacOS/Apnum" || true)"
