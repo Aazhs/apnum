@@ -87,34 +87,11 @@ struct TodayView: View {
     var body: some View {
         TimelineView(.everyMinute) { context in
             let now = context.date
-            let shown = model.skyPreview ?? now
-            let scene = model.skyScene
-            let skyIsDark = scene?.isDark ?? Sky.isDark(atHour: Sky.hour(of: now))
             ScrollView {
                 VStack(spacing: 0) {
-                    // The hero: the real sky over the pixel landscape, with the clock in it.
-                    ZStack(alignment: .top) {
-                        if let scene {
-                            PixelSkyView(scene: scene, animated: animatedSky)
-                        } else {
-                            SkyBackdrop(now: now)
-                        }
-                        HStack(alignment: .top, spacing: 18) {
-                            hero(shown, previewing: model.skyPreview != nil, now: now)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            if let summary = model.skySummary, let scene {
-                                SkyReadout(summary: summary, scene: scene, now: shown)
-                                    .frame(width: 340)
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                        .padding(.horizontal, 32)
-                        .padding(.top, 70)
-                        .frame(maxWidth: 1180)
-                        .environment(\.colorScheme, skyIsDark ? .dark : .light)
-                    }
-                    .frame(height: heroHeight)
-                    .clipped()
+                    // The hero reads the previewed sky itself, so scrubbing time only re-evaluates it
+                    // and not the day's panels below.
+                    TodayHero(now: now, animatedSky: animatedSky, height: heroHeight)
 
                     // The day's details sit on the ground below the scene.
                     VStack(alignment: .leading, spacing: 18) {
@@ -145,57 +122,10 @@ struct TodayView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(groundColor(scene).ignoresSafeArea())
+            .background(TodayGround().ignoresSafeArea())
             .ignoresSafeArea(edges: .top)
         }
         .navigationTitle("Today")
-    }
-
-    /// Below the scene the page continues in the colour of the ground.
-    private func groundColor(_ scene: SkyScene?) -> Color {
-        guard let p = scene?.palette else { return Color(nsColor: .windowBackgroundColor) }
-        return p.ground.mix(p.near, 0.3).color
-    }
-
-    // MARK: Hero
-
-    /// Date and a large clock straight on the sky, like a lock screen.
-    private func hero(_ shown: Date, previewing: Bool, now: Date) -> some View {
-        @Bindable var model = model
-        return VStack(alignment: .leading, spacing: 0) {
-            Text(previewing ? "Previewing the sky" : shown.formatted(.dateTime.weekday(.wide).day().month(.wide)))
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .contentTransition(.opacity)
-            ClockText(shown, size: 120, weight: .thin)
-                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
-                .opacity(previewing ? 0.85 : 1)
-            Text(summary(now))
-                .font(.title3.weight(.medium))
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
-                .opacity(previewing ? 0 : 1)
-            SkyTimeTravel(preview: $model.skyPreview, now: now)
-                .frame(maxWidth: 520)
-                .padding(.top, 14)
-        }
-    }
-
-    private func summary(_ now: Date) -> String {
-        var parts: [String] = []
-        if let next = model.nextAlarm {
-            parts.append("Your next alarm rings \(ClockFormat.relative(to: next.date, from: now))")
-        } else {
-            parts.append("No alarms set")
-        }
-        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) ?? now
-        let left = model.upcomingEvents.filter { !$0.isAllDay && $0.end > now && $0.start < endOfDay }.count
-        switch left {
-        case 0: parts.append("your calendar is clear for the rest of today")
-        case 1: parts.append("1 event is left today")
-        default: parts.append("\(left) events are left today")
-        }
-        return parts.joined(separator: ", and ") + "."
     }
 
     // MARK: Panels
@@ -421,6 +351,148 @@ private struct DueReminderRow: View {
                 }
             }
         }
+    }
+}
+
+
+// MARK: - Hero
+
+/// Below the scene the page continues in the colour of the ground.
+private struct TodayGround: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let p = (model.previewScene ?? model.skyScene)?.palette {
+            p.ground.mix(p.near, 0.3).color
+        } else {
+            Color(nsColor: .windowBackgroundColor)
+        }
+    }
+}
+
+/// The real sky over the pixel landscape, with the clock in it. The only part of Today that follows the
+/// time-travel preview, split into small views that each read only what they show, so a scrub tick
+/// re-evaluates the scene, the clock and the readout and nothing around them.
+private struct TodayHero: View {
+    @Environment(AppModel.self) private var model
+    let now: Date
+    let animatedSky: Bool
+    let height: CGFloat
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            HeroScene(now: now, animated: animatedSky)
+            HStack(alignment: .top, spacing: 18) {
+                hero
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HeroReadout(now: now)
+            }
+            .padding(.horizontal, 32)
+            .padding(.top, 70)
+            .frame(maxWidth: 1180)
+            .modifier(HeroColorScheme(now: now))
+        }
+        .frame(height: height)
+        .clipped()
+    }
+
+    /// Date and a large clock straight on the sky, like a lock screen.
+    private var hero: some View {
+        @Bindable var model = model
+        return VStack(alignment: .leading, spacing: 0) {
+            HeroClock(now: now)
+            Text(summary(now))
+                .font(.title3.weight(.medium))
+                .foregroundStyle(.secondary)
+                .padding(.top, 2)
+                .modifier(HeroHideWhilePreviewing())
+            SkyTimeTravel(preview: $model.skyPreview, now: now)
+                .frame(maxWidth: 520)
+                .padding(.top, 14)
+        }
+    }
+
+    private func summary(_ now: Date) -> String {
+        var parts: [String] = []
+        if let next = model.nextAlarm {
+            parts.append("Your next alarm rings \(ClockFormat.relative(to: next.date, from: now))")
+        } else {
+            parts.append("No alarms set")
+        }
+        let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: Calendar.current.startOfDay(for: now)) ?? now
+        let left = model.upcomingEvents.filter { !$0.isAllDay && $0.end > now && $0.start < endOfDay }.count
+        switch left {
+        case 0: parts.append("your calendar is clear for the rest of today")
+        case 1: parts.append("1 event is left today")
+        default: parts.append("\(left) events are left today")
+        }
+        return parts.joined(separator: ", and ") + "."
+    }
+}
+
+private struct HeroScene: View {
+    @Environment(AppModel.self) private var model
+    let now: Date
+    let animated: Bool
+
+    var body: some View {
+        if let scene = model.previewScene ?? model.skyScene {
+            PixelSkyView(scene: scene, animated: animated)
+        } else {
+            SkyBackdrop(now: now)
+        }
+    }
+}
+
+private struct HeroClock: View {
+    @Environment(AppModel.self) private var model
+    let now: Date
+
+    var body: some View {
+        let preview = model.skyPreview
+        let shown = preview ?? now
+        VStack(alignment: .leading, spacing: 0) {
+            Text(preview != nil ? "Previewing the sky" : shown.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .contentTransition(.opacity)
+            ClockText(shown, size: 120, weight: .thin)
+                .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
+                .opacity(preview != nil ? 0.85 : 1)
+        }
+    }
+}
+
+private struct HeroReadout: View {
+    @Environment(AppModel.self) private var model
+    let now: Date
+
+    var body: some View {
+        if let summary = model.previewSummary ?? model.skySummary, let scene = model.previewScene ?? model.skyScene {
+            SkyReadout(summary: summary, scene: scene, now: model.skyPreview ?? now)
+                .frame(width: 340)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
+/// Light or dark text over the sky, following the previewed sky.
+private struct HeroColorScheme: ViewModifier {
+    @Environment(AppModel.self) private var model
+    let now: Date
+
+    func body(content: Content) -> some View {
+        let dark = (model.previewScene ?? model.skyScene)?.isDark ?? Sky.isDark(atHour: Sky.hour(of: now))
+        content.environment(\.colorScheme, dark ? .dark : .light)
+    }
+}
+
+/// The "next alarm" line hides while previewing.
+private struct HeroHideWhilePreviewing: ViewModifier {
+    @Environment(AppModel.self) private var model
+
+    func body(content: Content) -> some View {
+        content.opacity(model.skyPreview != nil ? 0 : 1)
     }
 }
 

@@ -184,7 +184,7 @@ final class PixelRenderer {
         }
         if print != fingerprint {
             fingerprint = print
-            bake()
+            Perf.measure("bake") { bake() }
         }
         var dt = 0.0
         if let last = lastNow { dt = min(0.05, max(0, now.timeIntervalSince(last))) }
