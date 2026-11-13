@@ -169,3 +169,31 @@ An alarm rings on the Mac and on the phone. Stopping or snoozing on one silences
 - When the user stops or snoozes on the phone, the phone calls `alarm.stop` / `alarm.snooze` (or `timer.stop`) on the Mac with that `id`.
 - When a `ringing` event no longer lists an alarm the phone is ringing, the phone stops ringing it. If the phone is offline it simply rings on its own.
 - The phone sends event `phone.ringing` with `ids` (alarm ids it is ringing) so the Mac can show it; the Mac does not need to act on it.
+
+## Additions (v1.2)
+
+### New phone tools
+
+| Tool | Tier | What it does |
+|---|---|---|
+| `phone.calls.recent` | read | Recent calls from the call log (`limit`, default 20), newest first: `number`, `contactName`, `type` (`incoming`, `outgoing`, `missed`), `dateMs`, `durationSec`. Needs the call-log permission. |
+| `phone.notifications.clear` | write | Dismisses every clearable notification. Returns `cleared` (count). |
+
+`phone.ring` returns `{"ringing": true, "seconds": 30}` when it starts and `{"ringing": false}` after `stop: true`; the phone also sends event `ring` with `active` (bool) when ringing starts and ends, so the Mac can show a Stop button for exactly as long as it rings.
+
+`phone.sms.send`: `to` must be a dialable number (digits with optional leading `+`, spaces, dashes and brackets, which the phone strips). Alphanumeric sender IDs such as `JD-GROWWO-S` cannot be replied to; the Mac disables the reply field for them.
+
+`phone.contacts.search` results are `{name, numbers: [string]}`; the Mac calls it as the user types (debounced) to suggest contacts.
+
+### Messages are pushed, not polled
+
+`sms.received` must be sent the moment the SMS broadcast arrives (a manifest-registered receiver that hands the message to the running link service, starting it if needed). The Mac inserts the message into its list, shows the code and copies it immediately on that event; it never waits for a refresh. Target: under one second from the SMS arriving on the phone to the code being on the Mac's clipboard.
+
+### Clipboard sync
+
+When *Sync clipboard* is on (a Mac setting, default on), plain text copied on one device appears on the other.
+
+- Event `clipboard` in both directions: `text` (plain text, at most 100,000 characters), `id` (a random string for this copy).
+- **Mac → phone:** the Mac sends the event when its pasteboard changes. It never sends items marked concealed or transient by password managers (`org.nspasteboard.ConcealedType`, `org.nspasteboard.TransientType`), and never non-text content. The phone sets its clipboard on receipt.
+- **Phone → Mac:** Android only lets an app read the clipboard while it is in the foreground. The phone sends the event when apnum is open and the clipboard changes, and from a one-tap *Send clipboard to Mac* action (a Quick Settings tile and a notification action, which briefly bring a transparent activity to the front to read it). The Mac sets its pasteboard on receipt.
+- Loop prevention: each side remembers the last text it received from the peer and does not echo it back.
