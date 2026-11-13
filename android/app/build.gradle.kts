@@ -11,9 +11,12 @@ android {
     defaultConfig {
         applicationId = "dev.apnum.android"
         minSdk = 28
-        targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        // Deliberately 36, not 37. Android 17 withholds one-time-code SMS from apps that target 37, which would
+        // break the code-to-Mac feature. This app is sideloaded, so no store requires the newest target.
+        targetSdk = 36
+        // scripts/release.sh passes -PappVersionName / -PappVersionCode; these are the defaults.
+        versionCode = (project.findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1
+        versionName = (project.findProperty("appVersionName") as String?) ?: "0.1.0"
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 

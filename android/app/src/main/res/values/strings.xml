@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="clipboard_service_label">apnum clipboard</string>
+    <string name="clipboard_service_summary">Lets apnum notice when you copy text and send it to your Mac. It does not read your screen for anything else.</string>
+    <string name="clipboard_service_description">Lets apnum notice when you copy text and send it to your Mac. It does not read your screen for anything else.</string>
+</resources>

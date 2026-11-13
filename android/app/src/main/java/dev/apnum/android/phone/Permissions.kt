@@ -22,6 +22,7 @@ enum class Capability(val title: String, val why: String, val runtime: List<Stri
     CallLog("Call history", "Lets the Mac list your recent calls. Sideloaded apps may need Allow restricted settings in App info first.",
         listOf(Manifest.permission.READ_CALL_LOG)),
     NotificationAccess("Notification access", "Lets the Mac see your phone's notifications and dismiss them.", emptyList()),
+    ClipboardAccess("Copy to Mac automatically (optional)", "Lets apnum notice when you copy text and send it to your Mac. Turn it on in Settings; Android shows a strong warning.", emptyList()),
     PostNotifications("Show notifications", "Shows the small \"Connected to your Mac\" status.",
         if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()),
     FullScreenAlarm("Full-screen alarms", "Lets a ringing alarm light up a locked screen. Android 14 and later ask for this in Settings.", emptyList()),
@@ -42,6 +43,7 @@ object Perms {
 
     fun granted(ctx: Context, c: Capability): Boolean = when (c) {
         Capability.NotificationAccess -> notificationAccessGranted(ctx)
+        Capability.ClipboardAccess -> ClipboardAccessibilityService.enabled(ctx)
         Capability.Battery -> ignoringBatteryOptimisations(ctx)
         Capability.FullScreenAlarm -> dev.apnum.android.alarm.AlarmNotifications.canUseFullScreen(ctx)
         Capability.PostNotifications -> c.runtime.all { has(ctx, it) } // true below Android 13

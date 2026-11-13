@@ -186,6 +186,7 @@ class SmsReceiver : BroadcastReceiver() {
         val address = parts.first().originatingAddress
         val body = parts.joinToString("") { it.messageBody.orEmpty() }
         val otp = Otp.extract(body)
+        if (otp != null) graph.otpDedupe.firstReport(otp, System.currentTimeMillis()) // so the notification fallback stays quiet
         graph.link.sendEventReliably("sms.received", smsEvent(address, quickContactName(graph.phoneTools, address), body, parts.first().timestampMillis, otp))
         runCatching { dev.apnum.android.LinkService.start(context) }
         // Timing only, never the message.

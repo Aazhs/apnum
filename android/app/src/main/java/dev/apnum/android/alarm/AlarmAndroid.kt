@@ -76,7 +76,8 @@ class AlarmRescheduleReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val graph = ApnumApp.graph(context)
         graph.alarmScheduler.reschedule()
-        if (intent.action == Intent.ACTION_BOOT_COMPLETED && graph.store.load() != null) {
+        // After an update Android stops the app; start the link again.
+        if ((intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) && graph.store.load() != null) {
             runCatching { dev.apnum.android.LinkService.start(context) }
         }
     }

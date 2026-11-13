@@ -45,7 +45,9 @@ class ClipboardSync(private val ctx: Context, private val send: (text: String, i
     }
 
     /** Reads the clipboard (works only with focus or in the foreground) and sends it if it is new. Returns false when nothing was sent. */
-    fun sendCurrent(): Boolean {
+    fun sendCurrent(auto: Boolean = false): Boolean {
+        // Automatic sending never sends what the source marked sensitive (password managers do).
+        if (auto && runCatching { isSensitive(cm.primaryClipDescription) }.getOrDefault(false)) return false
         val text = runCatching { cm.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(ctx)?.toString() }.getOrNull()
         if (!guard.shouldSend(text)) return false
         send(text!!, UUID.randomUUID().toString())
@@ -53,6 +55,9 @@ class ClipboardSync(private val ctx: Context, private val send: (text: String, i
     }
 
     companion object {
+        fun isSensitive(d: ClipDescription?): Boolean =
+            Build.VERSION.SDK_INT >= 33 && d?.extras?.getBoolean(ClipDescription.EXTRA_IS_SENSITIVE, false) == true
+
         /** Plain text, flagged as not sensitive so Android shows the clip preview. */
         fun setPlain(ctx: Context, text: String) {
             val clip = ClipData.newPlainText("apnum", text)
@@ -70,6 +75,9 @@ class ClipboardSync(private val ctx: Context, private val send: (text: String, i
 /** Transparent: waits until it has focus (the only time Android lets it read the clipboard), sends once, finishes. */
 class ClipboardSendActivity : Activity() {
     private var done = false
+    private val quiet get() = intent?.getBooleanExtra(EXTRA_QUIET, false) == true
+
+    companion object { const val EXTRA_QUIET = "quiet" }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -78,10 +86,10 @@ class ClipboardSendActivity : Activity() {
         val graph = ApnumApp.graph(this)
         val message = when {
             graph.link.connection.value != ConnectionState.Connected -> "Your Mac is not connected."
-            graph.clipboard.sendCurrent() -> "Sent to your Mac."
+            graph.clipboard.sendCurrent(auto = quiet) -> "Sent to your Mac."
             else -> "Nothing new to send."
         }
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        if (!quiet) Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
         finish()
     }
 }
