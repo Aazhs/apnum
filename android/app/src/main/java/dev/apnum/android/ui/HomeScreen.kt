@@ -50,8 +50,7 @@ import kotlinx.serialization.json.put
 @Composable
 fun HomeScreen(mac: PairedMac?, state: ConnectionState, remote: MacRemote, demo: Boolean) {
     val timers by remote.timers.collectAsState()
-    val alarms by remote.alarms.collectAsState()
-    val notes by remote.notes.collectAsState()
+    val tools = remote.tools.collectAsState().value // read here so the screen recomposes when the Mac's tool list arrives
     val connected = demo || state == ConnectionState.Connected
 
     LazyColumn(
@@ -60,10 +59,8 @@ fun HomeScreen(mac: PairedMac?, state: ConnectionState, remote: MacRemote, demo:
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item { Header(if (demo) "Demo Mac" else mac?.name ?: "Your Mac", connected, state) }
-        if (remote.hasRemote || demo) item { RemoteSection(remote) }
+        if (remote.hasRemote || demo) item { RemoteSection(remote, tools) }
         if (remote.has("timer.start") || demo) item { TimersSection(remote, timers) }
-        if (remote.has("alarm.list") || demo) item { AlarmsSection(remote, alarms) }
-        if (remote.has("note.list") || demo) item { NotesSection(remote, notes) }
         if (!connected) item {
             Text(
                 "The Mac controls appear here once the phone is connected. Make sure both are on the same Wi-Fi.",
@@ -92,7 +89,7 @@ private fun Header(name: String, connected: Boolean, state: ConnectionState) {
 }
 
 @Composable
-private fun RemoteSection(remote: MacRemote) {
+private fun RemoteSection(remote: MacRemote, @Suppress("UNUSED_PARAMETER") tools: List<dev.apnum.android.link.ToolDescriptor>) {
     val ctx = LocalContext.current
     val volume by remote.volume.collectAsState()
     val muted by remote.muted.collectAsState()
@@ -195,54 +192,3 @@ fun clock(totalSeconds: Long): String {
     val s = totalSeconds % 60
     return if (h > 0) "%d:%02d:%02d".format(h, m, s) else "%d:%02d".format(m, s)
 }
-
-@Composable
-private fun AlarmsSection(remote: MacRemote, alarms: List<AlarmItem>) {
-    Section("Alarms") {
-        alarms.forEach { a ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(a.time, style = MaterialTheme.typography.displaySmall)
-                    Text(
-                        listOf(a.label, a.repeat.ifBlank { "Once" }).filter { it.isNotBlank() }.joinToString(" - "),
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = a.enabled, onCheckedChange = { on ->
-                    remote.act("alarm.update", buildJsonObject { put("id", a.id); put("isEnabled", on) }) { remote.refreshAlarms() }
-                })
-            }
-        }
-        if (alarms.isEmpty()) Text("No alarms on the Mac.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun NotesSection(remote: MacRemote, notes: List<NoteItem>) {
-    var open by remember { mutableStateOf<Pair<String, String>?>(null) }
-    var loading by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(loading) {
-        val id = loading ?: return@LaunchedEffect
-        val out = remote.run("note.get", idInput(id)) as? JsonObject
-        open = out?.let { (it.str("title").orEmpty().ifBlank { "Untitled" }) to it.str("body").orEmpty() }
-        loading = null
-    }
-    Section("Notes") {
-        notes.forEach { n ->
-            Column(Modifier.fillMaxWidth().clickable { loading = n.id }.padding(vertical = 4.dp)) {
-                Text(n.title.ifBlank { "Untitled" }, style = MaterialTheme.typography.titleMedium)
-                if (n.preview.isNotBlank()) Text(n.preview, maxLines = 1, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-        if (notes.isEmpty()) Text("No notes yet.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-    open?.let { (title, body) ->
-        AlertDialog(
-            onDismissRequest = { open = null },
-            title = { Text(title) },
-            text = { Column(Modifier.verticalScroll(rememberScrollState())) { Text(body) } },
-            confirmButton = { TextButton(onClick = { open = null }) { Text("Close") } },
-        )
-    }
-}
-

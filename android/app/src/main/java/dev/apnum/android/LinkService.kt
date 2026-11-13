@@ -92,11 +92,3 @@ class LinkService : LifecycleService() {
         }
     }
 }
-
-/** Starts the link after the phone boots, when a Mac is paired. */
-class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
-        if (ApnumApp.graph(context).store.load() != null) runCatching { LinkService.start(context) }
-    }
-}

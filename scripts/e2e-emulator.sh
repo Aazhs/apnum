@@ -23,6 +23,12 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk >/dev/null
 adb shell pm clear dev.apnum.android >/dev/null
 adb shell pm grant dev.apnum.android android.permission.ACCESS_LOCAL_NETWORK 2>/dev/null || true
 adb shell pm grant dev.apnum.android android.permission.POST_NOTIFICATIONS 2>/dev/null || true
+if [ -n "${E2E_BOGUS_FIRST:-}" ]; then
+  # Regression test: a failed pairing attempt (right address, wrong Mac key) must not poison the next link.
+  BOGUS="$(echo "$URI" | sed -E 's/pk=[^&]*/pk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/')"
+  adb shell am start -a android.intent.action.VIEW -d "'$BOGUS'" >/dev/null
+  sleep 6
+fi
 adb shell am start -a android.intent.action.VIEW -d "'$URI'" >/dev/null
 for _ in $(seq 1 60); do grep -q paired "$W/home/link.json" 2>/dev/null && break; sleep 2; done
 if grep -q paired "$W/home/link.json" 2>/dev/null; then

@@ -32,7 +32,10 @@ Open apnum and go to Permissions. Each row says what it is for.
 | Phone and calls | See call state, start a call, hang up or reject |
 | Notification access | Show your notifications on the Mac and dismiss them |
 | Show notifications | The small "Connected to your Mac" status |
+| Full-screen alarms | Let a ringing alarm light up a locked screen. Android 14 and later keep this off for some sideloaded apps: tap Grant on the Phone tab and switch it on |
 | Battery optimisation | Keep the link alive with the screen off |
+
+**Alarms need no extra prompt.** The app is an alarm clock, so it declares the exact-alarm permission (`USE_EXACT_ALARM`) and Android grants it at install. The alarm icon in the status bar shows the next alarm. If a ringing alarm only shows a banner on a locked phone, the Full-screen alarms row is not granted.
 
 **Allow restricted settings.** Because the app is installed outside the Play Store, Android 13 and later can grey out SMS and Notification access. Open Settings, Apps, apnum, tap the three dots at the top right, and choose Allow restricted settings. Then grant the permission again.
 
@@ -50,6 +53,16 @@ Choose whichever suits you.
 
 After pairing, the phone reconnects by itself, including after a reboot. To forget the Mac, open Settings in the app and tap Unpair.
 
+## 4. Alarms and notes
+
+The Alarms and Notes tabs are the phone's own, and work with no Mac and no network. The phone also keeps a copy in sync with the Mac:
+
+- On connect, a moment after each edit, and whenever the Mac says its alarms or notes changed, the phone swaps changes with the Mac. The newer edit of each alarm or note wins, and deleting one removes it on both.
+- Offline edits are kept on the phone and pushed the next time it connects. A failed sync is retried every 15 seconds while connected. The line under the title says "Synced with Mac", "Offline, will sync later" or "Mac cannot sync yet" (an older Mac app without sync: nothing is lost, it just stays on the phone).
+- An alarm rings on both devices. Stop or snooze it on one and the other goes quiet. If the phone cannot reach the Mac it rings alone, and keeps ringing until you stop it (it stops by itself after 10 minutes and leaves a "Missed alarm" notification).
+- A timer that goes off on the Mac shows a notification on the phone with a Stop button.
+- Alarms are rescheduled after a reboot, a clock change and a time-zone change.
+
 ## Troubleshooting
 
 - **The phone says "Looking for your Mac".** Check that both are on the same network, and that apnum is running on the Mac.
@@ -59,4 +72,5 @@ After pairing, the phone reconnects by itself, including after a reboot. To forg
 - **Discovery finds nothing.** Type the Mac's address in Enter code instead. You can see it in the link on the Mac, after `host=`.
 - **Texts or codes are missing on the Mac.** Check SMS in Permissions and that it says Granted.
 - **The clipboard says unavailable.** Android only lets the app on screen read the clipboard. Open apnum on the phone and try again.
+- **An alarm did not ring.** Check Battery optimisation is Unrestricted and the alarm switch is on. After a restart, open the app once if your phone blocks apps from starting at boot.
 - **Ring does not make a sound.** It uses the alarm volume, which works on silent. Do Not Disturb can still mute alarms; allow alarms in Do Not Disturb.

@@ -33,9 +33,6 @@ data class TimerItem(val id: String, val label: String, val state: String, val r
         if (running) maxOf(0.0, remainingSeconds - (nowMs - fetchedAtMs) / 1000.0).toLong() else remainingSeconds.toLong()
 }
 
-data class AlarmItem(val id: String, val time: String, val label: String, val repeat: String, val enabled: Boolean)
-data class NoteItem(val id: String, val title: String, val preview: String)
-
 /** What the home screen shows about the Mac, fetched through the same tool calls an agent would use. */
 class MacRemote(context: Context, private val link: LinkClient, private val scope: CoroutineScope) {
     private val prefs = context.applicationContext.getSharedPreferences("apnum_ui", Context.MODE_PRIVATE)
@@ -44,11 +41,6 @@ class MacRemote(context: Context, private val link: LinkClient, private val scop
     val muted = MutableStateFlow<Boolean?>(null)
     private val _timers = MutableStateFlow<List<TimerItem>>(emptyList())
     val timers: StateFlow<List<TimerItem>> = _timers.asStateFlow()
-    private val _alarms = MutableStateFlow<List<AlarmItem>>(emptyList())
-    val alarms: StateFlow<List<AlarmItem>> = _alarms.asStateFlow()
-    private val _notes = MutableStateFlow<List<NoteItem>>(emptyList())
-    val notes: StateFlow<List<NoteItem>> = _notes.asStateFlow()
-
     /** Latitude and longitude the Mac uses for the sky; Pune until the Mac says otherwise. */
     private val _location = MutableStateFlow(
         prefs.getFloat("lat", Float.NaN).takeIf { !it.isNaN() }?.let { it.toDouble() to prefs.getFloat("lon", 0f).toDouble() }
@@ -69,13 +61,14 @@ class MacRemote(context: Context, private val link: LinkClient, private val scop
         scope.launch {
             link.macEvents.collect { e ->
                 if (e.topic == "changed") when (e.data.str("topic")) {
-                    "alarms" -> refreshAlarms()
                     "timers" -> refreshTimers()
-                    "notes" -> refreshNotes()
                 }
             }
         }
     }
+
+    /** The Mac's tool list; collect it in a composable so the screen follows what the Mac offers. */
+    val tools: StateFlow<List<dev.apnum.android.link.ToolDescriptor>> get() = link.macTools
 
     fun has(tool: String) = link.macTools.value.any { it.name == tool }
     val hasRemote get() = link.macTools.value.any { it.name.startsWith("mac.") }
@@ -97,7 +90,7 @@ class MacRemote(context: Context, private val link: LinkClient, private val scop
     // region refresh
 
     fun refreshAll() {
-        refreshVolume(); refreshTimers(); refreshAlarms(); refreshNotes(); refreshSky()
+        refreshVolume(); refreshTimers(); refreshSky()
     }
 
     fun refreshVolume() {
@@ -122,30 +115,6 @@ class MacRemote(context: Context, private val link: LinkClient, private val scop
         }
     }
 
-    fun refreshAlarms() {
-        if (!has("alarm.list")) return
-        scope.launch {
-            val out = run("alarm.list") as? JsonObject ?: return@launch
-            _alarms.value = (out["alarms"] as? JsonArray).objects().mapNotNull {
-                AlarmItem(
-                    it.str("id") ?: return@mapNotNull null, it.str("time").orEmpty(), it.str("label").orEmpty(),
-                    (it["repeatDays"] as? JsonArray)?.mapNotNull { d -> (d as? JsonPrimitive)?.content?.replaceFirstChar(Char::uppercase)?.take(3) }?.joinToString(" ").orEmpty(),
-                    it.bool("isEnabled") ?: false,
-                )
-            }
-        }
-    }
-
-    fun refreshNotes() {
-        if (!has("note.list")) return
-        scope.launch {
-            val out = run("note.list", buildJsonObject { put("limit", 20) }) as? JsonObject ?: return@launch
-            _notes.value = (out["notes"] as? JsonArray).objects().mapNotNull {
-                NoteItem(it.str("id") ?: return@mapNotNull null, it.str("title").orEmpty(), it.str("preview").orEmpty())
-            }
-        }
-    }
-
     /** `sky.now` carries the Mac's location as `location: {latitude, longitude}`. */
     fun refreshSky() {
         if (!has("sky.now")) return
@@ -165,8 +134,6 @@ class MacRemote(context: Context, private val link: LinkClient, private val scop
         volume.value = 42; muted.value = false
         val now = System.currentTimeMillis()
         _timers.value = listOf(TimerItem("1", "Tea", "running", 214.0, now), TimerItem("2", "", "paused", 1500.0, now))
-        _alarms.value = listOf(AlarmItem("1", "06:30", "Wake up", "Mon Tue Wed Thu Fri", true), AlarmItem("2", "08:00", "", "Sat Sun", false))
-        _notes.value = listOf(NoteItem("1", "Groceries", "Oats, lemons, coffee beans"), NoteItem("2", "Trip ideas", "Lonavala in the monsoon"))
     }
 
     private fun JsonArray?.objects(): List<JsonObject> = this?.mapNotNull { it as? JsonObject } ?: emptyList()

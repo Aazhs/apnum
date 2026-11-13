@@ -22,6 +22,7 @@ enum class Capability(val title: String, val why: String, val runtime: List<Stri
     NotificationAccess("Notification access", "Lets the Mac see your phone's notifications and dismiss them.", emptyList()),
     PostNotifications("Show notifications", "Shows the small \"Connected to your Mac\" status.",
         if (Build.VERSION.SDK_INT >= 33) listOf(Manifest.permission.POST_NOTIFICATIONS) else emptyList()),
+    FullScreenAlarm("Full-screen alarms", "Lets a ringing alarm light up a locked screen. Android 14 and later ask for this in Settings.", emptyList()),
     Battery("Battery optimisation", "Keeps the link alive when the screen is off. Set it to unrestricted.", emptyList()),
 }
 
@@ -40,6 +41,7 @@ object Perms {
     fun granted(ctx: Context, c: Capability): Boolean = when (c) {
         Capability.NotificationAccess -> notificationAccessGranted(ctx)
         Capability.Battery -> ignoringBatteryOptimisations(ctx)
+        Capability.FullScreenAlarm -> dev.apnum.android.alarm.AlarmNotifications.canUseFullScreen(ctx)
         Capability.PostNotifications -> c.runtime.all { has(ctx, it) } // true below Android 13
         else -> c.runtime.all { has(ctx, it) }
     }
