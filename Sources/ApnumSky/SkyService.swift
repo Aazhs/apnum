@@ -92,16 +92,21 @@ public actor SkyService {
     }
 
     public func scene(at date: Date) -> SkyScene {
-        engine.scene(at: date, location: current.location, weather: currentWeather())
+        Perf.measure("scene") { engine.scene(at: date, location: current.location, weather: currentWeather()) }
+    }
+
+    /// A scene and its summary for one instant, in one actor hop (used while scrubbing time).
+    public func snapshot(at date: Date) -> (scene: SkyScene, summary: SkySummary) {
+        (scene(at: date), summary(at: date))
     }
 
     /// The real sky colour through the day at the current location (see `SkyEngine.dayColors`).
     public func dayColors(for date: Date) -> [RGB] {
-        engine.dayColors(for: date, location: current.location)
+        Perf.measure("dayColors") { engine.dayColors(for: date, location: current.location) }
     }
 
     public func summary(at date: Date) -> SkySummary {
-        engine.summary(at: date, location: current.location, weather: currentWeather())
+        Perf.measure("summary") { engine.summary(at: date, location: current.location, weather: currentWeather()) }
     }
 
     /// The service's notion of now (injectable for tests).

@@ -117,7 +117,9 @@ struct SkyTimeTravel: View {
         HStack(spacing: 12) {
             Image(systemName: "clock.arrow.2.circlepath")
                 .foregroundStyle(.secondary)
-            Slider(value: $minutes, in: 0...1439, step: 5) { Text("Time of day") }
+            // No `step:` here: a stepped slider draws and lays out 288 tick marks on every change, which
+            // was most of the cost of scrubbing. The value is snapped to 5 minutes in `onChange` instead.
+            Slider(value: $minutes, in: 0...1439) { Text("Time of day") }
                 .labelsHidden()
                 .frame(minWidth: 160)
             Text(ClockFormat.string(preview ?? now))
@@ -134,8 +136,11 @@ struct SkyTimeTravel: View {
         .glassEffect(.regular, in: .capsule)
         .onAppear { minutes = minutesOf(preview ?? now) }
         .onChange(of: minutes) { _, value in
-            // Only start previewing when the user moves the slider away from now.
-            if preview != nil || abs(value - minutesOf(now)) >= 5 { preview = dateFor(value) }
+            // Snap to 5 minutes; only start previewing when the user moves the slider away from now.
+            let snapped = (value / 5).rounded() * 5
+            let date = dateFor(snapped)
+            guard date != preview else { return }
+            if preview != nil || abs(snapped - minutesOf(now)) >= 5 { preview = date }
         }
         .onChange(of: preview) { _, value in
             // Keep the handle in step when the preview changes from elsewhere (or returns to live).

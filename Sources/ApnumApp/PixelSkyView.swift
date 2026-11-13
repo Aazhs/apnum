@@ -218,7 +218,7 @@ private final class PixelSkyNSView: NSView {
 
     private func drawFrame() {
         guard let scene, bounds.width > 1, bounds.height > 1 else { return }
-        guard let out = renderer.render(scene: scene, size: bounds.size, now: Date(), animated: shouldRun) else { return }
+        guard let out = Perf.measure("frame", threshold: 4, { renderer.render(scene: scene, size: bounds.size, now: Date(), animated: shouldRun) }) else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         let k = CGFloat(renderer.scale)

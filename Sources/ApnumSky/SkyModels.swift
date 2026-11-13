@@ -311,6 +311,18 @@ public struct SkyScene: Sendable {
     public var isDark: Bool { palette.sky.luminance < 0.5 }
 }
 
+/// Equality by the inputs and headline outputs of a scene (time, place, weather, palette, sun, moon and
+/// how many stars, planets and Milky Way points are up). SwiftUI compares view values on every update;
+/// without this it walks the ~3,000 star and Milky Way elements of both scenes each time.
+extension SkyScene: Equatable {
+    public static func == (a: SkyScene, b: SkyScene) -> Bool {
+        a.date == b.date && a.location == b.location && a.weather == b.weather && a.palette == b.palette
+            && a.sun == b.sun && a.moon == b.moon && a.moonPhase == b.moonPhase && a.bloodMoon == b.bloodMoon
+            && a.stars.count == b.stars.count && a.planets.count == b.planets.count
+            && a.milkyWay.count == b.milkyWay.count && a.constellations.count == b.constellations.count
+    }
+}
+
 /// Words for the sky clock: "Dusk in Pune, light rain, 24°C".
 public struct SkySummary: Sendable, Equatable, Codable {
     /// Night, Dawn, Sunrise, Morning, Day, Evening, Sunset, Dusk.

@@ -245,8 +245,39 @@ private struct AboutSettings: View {
                 }
             }
             .themedRows(theme)
+            Section {
+                DiagnosticsRow()
+            }
+            .themedRows(theme)
         }
         .formStyle(.grouped)
+    }
+}
+
+/// Live memory and CPU of apnum itself. Samples every 2 seconds, and only while this tab is on screen
+/// (`.task` is cancelled when the view disappears), so it costs nothing otherwise.
+private struct DiagnosticsRow: View {
+    @State private var usage: ProcessUsage?
+    @State private var sampler = ProcessUsageSampler()
+
+    var body: some View {
+        LabeledContent("Diagnostics") {
+            if let usage {
+                Text("\(usage.footprintMB, format: .number.precision(.fractionLength(0))) MB memory, \(usage.cpuPercent, format: .number.precision(.fractionLength(1)))% CPU")
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Measuring…").foregroundStyle(.secondary)
+            }
+        }
+        .task {
+            _ = sampler.sample()
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                if Task.isCancelled { break }
+                usage = sampler.sample()
+            }
+        }
     }
 }
 

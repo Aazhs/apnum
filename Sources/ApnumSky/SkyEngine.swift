@@ -3,7 +3,13 @@ import Foundation
 /// Computes the real sky for a place and time: sun, moon, stars, planets, Milky Way,
 /// constellations, meteor showers and special moons. A port of the sky model on aarshj.me.
 public struct SkyEngine: Sendable {
+    /// Shared by every copy of the engine.
+    let cache = SkyCache()
+
     public init() {}
+
+    /// How many day-level results (sun crossings, day colours) were computed rather than reused.
+    var cacheMisses: Int { cache.misses.withLock { $0 } }
 
     /// Approximate local clock offset: mean solar time at the longitude. The site
     /// uses IST for the calendar day of meteor showers and blue moons.
@@ -66,7 +72,11 @@ public struct SkyEngine: Sendable {
         // Today in local solar time, plus the following day so the next event is always found.
         let local = date.timeIntervalSince1970 + offset * 3600
         let dayStart = Date(timeIntervalSince1970: (local / 86400).rounded(.down) * 86400 - offset * 3600)
-        let crossings = Astronomy.sunCrossings(from: dayStart, to: dayStart.addingTimeInterval(3 * 86400), location: location)
+        // Sunrise and sunset only depend on the day and the place, so scrubbing through a day reuses them.
+        let key = SkyCache.DayKey(day: dayStart.timeIntervalSince1970, latitude: lat, longitude: lon)
+        let crossings = cache.crossings(key: key) {
+            Astronomy.sunCrossings(from: dayStart, to: dayStart.addingTimeInterval(3 * 86400), location: location)
+        }
         let today = crossings.filter { $0.date < dayStart.addingTimeInterval(86400) }
         let next = crossings.first { $0.date > date }
 
@@ -90,7 +100,13 @@ public extension SkyEngine {
     /// from midnight to midnight. Follows the real sun, so dawn and dusk sit where they really are.
     func dayColors(for date: Date, location: GeoLocation, samples: Int = 49, calendar: Calendar = .current) -> [RGB] {
         let start = calendar.startOfDay(for: date)
-        return (0..<samples).map { i in
+        let key = SkyCache.DayKey(
+            day: start.timeIntervalSince1970, latitude: location.latitude, longitude: location.longitude, samples: samples)
+        return cache.colors(key: key) { computeDayColors(from: start, location: location, samples: samples) }
+    }
+
+    private func computeDayColors(from start: Date, location: GeoLocation, samples: Int) -> [RGB] {
+        (0..<samples).map { i in
             let t = start.addingTimeInterval(Double(i) / Double(samples - 1) * 86_400)
             let altitude = Astronomy.sunPosition(t, location).altitudeDegrees
             return SkyPalette.forSunAltitude(altitude).sky
