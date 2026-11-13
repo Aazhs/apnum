@@ -384,7 +384,13 @@ class LinkClient(
         return true
     }
 
-    private fun describe(e: Exception): String = when (e) {
+    private fun describe(e: Exception): String {
+        // The exception type and system message only (an address and errno); never message contents.
+        runCatching { android.util.Log.w("apnum", "link connect failed: ${e.javaClass.name}: ${e.message}") }
+        return describeMessage(e)
+    }
+
+    private fun describeMessage(e: Exception): String = when (e) {
         is java.net.ConnectException, is java.net.SocketTimeoutException, is java.net.UnknownHostException ->
             "Could not reach the Mac at that address. Check that both devices are on the same network."
         is kotlinx.coroutines.TimeoutCancellationException -> "The Mac did not answer in time."
