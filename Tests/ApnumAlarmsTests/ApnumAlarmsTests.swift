@@ -177,6 +177,28 @@ struct Fixture {
         #expect(await f.service.alarm(id: a.id)?.isEnabled == false)  // one-shot done
     }
 
+    @Test func stillRingsWhenTheClockMirrorIsFailing() async throws {
+        // Mirroring is on but the shortcut is missing: an alarm must never be silent.
+        let mirror = FakeMirror()
+        mirror.fail.withLock { $0 = true }
+        let f = Fixture(mirror: mirror)
+        try await f.service.setSettings(AlarmSettings(mirrorToClockApp: true))
+        let a = try await f.service.create(hour: 7, minute: 0)
+        #expect(await f.service.lastMirrorError() != nil)
+        await f.service.tick(now: date(15, 7, 0))
+        #expect(f.ringer.started.count == 1)
+        #expect(await f.service.alarm(id: a.id)?.isEnabled == true)  // still ours until stopped
+
+        // Once the mirror works again the Clock app takes over.
+        mirror.fail.withLock { $0 = false }
+        _ = await f.service.syncMirrorNow()
+        try await f.service.stopRinging(id: a.id)
+        let b = try await f.service.create(hour: 8, minute: 0)
+        await f.service.tick(now: date(15, 8, 0))
+        #expect(f.ringer.started.count == 1)
+        #expect(await f.service.alarm(id: b.id)?.isEnabled == false)
+    }
+
     @Test func missedWhileAsleepIsNotRung() async throws {
         let f = Fixture()
         let once = try await f.service.create(hour: 7, minute: 0)

@@ -21,6 +21,8 @@ public actor AlarmService {
     private var ringingRequests: [String: RingRequest] = [:]
     private var lastTick: Date?
     private var mirrorError: String?
+    /// True only after a mirror sync has succeeded; apnum keeps ringing itself until then.
+    private var mirrorHealthy = false
 
     /// `clock` supplies "now" for mutations (createdAt, snooze); tests inject a fixed one.
     public init(
@@ -41,6 +43,8 @@ public actor AlarmService {
     public func load() async throws {
         all = try await alarmStore.load() ?? []
         currentSettings = try await settingsStore.load() ?? AlarmSettings()
+        // Find out now whether the Clock mirror works, so a broken one cannot silence the first alarm.
+        if currentSettings.mirrorToClockApp { await syncMirror() }
     }
 
     /// Live alarms sorted by time of day.
@@ -256,7 +260,9 @@ public actor AlarmService {
     public func tick(now: Date) async {
         var changed = false
         var fired = false
-        let mirrorMode = currentSettings.mirrorToClockApp
+        // The Clock app only takes over ringing when the mirror is known to work. If the shortcut is
+        // missing or failing, apnum rings itself so an alarm is never silent.
+        let mirrorMode = currentSettings.mirrorToClockApp && mirrorHealthy
         for index in all.indices {
             var from = max(lastTick ?? .distantPast, all[index].updatedAt, all[index].lastFiredAt ?? .distantPast)
             var iterations = 0
@@ -324,8 +330,10 @@ public actor AlarmService {
         do {
             try await mirror.sync(payload)
             mirrorError = nil
+            mirrorHealthy = true
         } catch {
             mirrorError = error.localizedDescription
+            mirrorHealthy = false
         }
     }
 
