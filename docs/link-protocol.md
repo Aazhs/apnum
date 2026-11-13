@@ -187,6 +187,8 @@ An alarm rings on the Mac and on the phone. Stopping or snoozing on one silences
 
 ### Messages are pushed, not polled
 
+On Android 17 the broadcast can be withheld from apps targeting 37 (apnum targets 36). As a fallback the notification listener runs the same code extractor on notifications from the default SMS app and known messaging apps and sends the same event (`address` = notification title, `body` = text), unless the same code was already reported within 2 minutes.
+
 `sms.received` must be sent the moment the SMS broadcast arrives (a manifest-registered receiver that hands the message to the running link service, starting it if needed). The Mac inserts the message into its list, shows the code and copies it immediately on that event; it never waits for a refresh. Target: under one second from the SMS arriving on the phone to the code being on the Mac's clipboard.
 
 ### Clipboard sync
@@ -196,4 +198,5 @@ When *Sync clipboard* is on (a Mac setting, default on), plain text copied on on
 - Event `clipboard` in both directions: `text` (plain text, at most 100,000 characters), `id` (a random string for this copy).
 - **Mac → phone:** the Mac sends the event when its pasteboard changes. It never sends items marked concealed or transient by password managers (`org.nspasteboard.ConcealedType`, `org.nspasteboard.TransientType`), and never non-text content. The phone sets its clipboard on receipt.
 - **Phone → Mac:** Android only lets an app read the clipboard while it is in the foreground. The phone sends the event when apnum is open and the clipboard changes, and from a one-tap *Send clipboard to Mac* action (a Quick Settings tile and a notification action, which briefly bring a transparent activity to the front to read it). The Mac sets its pasteboard on receipt.
+- **Automatic phone → Mac (opt-in):** with the setting *Send what I copy to my Mac automatically* on and the "apnum clipboard" Accessibility service enabled, the phone notices a copy (the system clipboard preview, or a click on Copy / Cut), takes focus for a few milliseconds with a 1x1 transparent accessibility overlay, reads the clip and sends the same `clipboard` event. It skips clips marked sensitive, text over 100,000 characters and text that came from the Mac. If the overlay gets no focus within 500 ms it falls back to the transparent activity.
 - Loop prevention: each side remembers the last text it received from the peer and does not echo it back.

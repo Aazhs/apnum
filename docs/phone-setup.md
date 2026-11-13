@@ -63,6 +63,20 @@ The Alarms and Notes tabs are the phone's own, and work with no Mac and no netwo
 - A timer that goes off on the Mac shows a notification on the phone with a Stop button.
 - Alarms are rescheduled after a reboot, a clock change and a time-zone change.
 
+## 5. Optional: copy to the Mac automatically
+
+Open Settings in apnum and turn on **Send what I copy to my Mac automatically**. It uses an Accessibility service called "apnum clipboard" that only notices when you copy text (the Copy button, or the clipboard preview Android shows) and then sends that text to your Mac. It does not read your screen for anything else, skips anything an app marks as sensitive (password managers) and anything over 100,000 characters.
+
+1. The switch opens Android's Accessibility settings. Find **apnum clipboard** (under Installed apps or Downloaded apps) and turn it on. Android shows a strong warning; that is normal for every Accessibility service.
+2. If the switch is greyed out or Android says the setting is restricted, open Settings, Apps, apnum, tap the three dots and choose **Allow restricted settings**, then try again. Sideloaded apps need this.
+3. Settings in apnum shows "On" once the service runs. It works only while the phone is paired and connected, and turning the setting off makes the service do nothing.
+
+The Quick Settings tile still works without any of this.
+
+## 6. Updating apnum
+
+Settings has a **Software update** section: it shows the installed version and **Check for updates** asks GitHub (github.com/Aazhs/apnum) whether a newer release exists. **Update now** downloads the phone's APK, then Android shows its usual install confirmation. The first time, Android asks you to allow apnum under **Install unknown apps**. An update installs only when it is signed with the same key as the build you have; otherwise Android refuses it. "Check for updates automatically" (on by default) checks about once a day. apnum never downloads an update without you tapping Update now.
+
 ## Troubleshooting
 
 - **The phone says "Looking for your Mac".** Check that both are on the same network, and that apnum is running on the Mac.
@@ -71,6 +85,7 @@ The Alarms and Notes tabs are the phone's own, and work with no Mac and no netwo
 - **Guest Wi-Fi or a cafe network.** These often stop devices from seeing each other. Use your home Wi-Fi or the phone's hotspot instead.
 - **Discovery finds nothing.** Type the Mac's address in Enter code instead. You can see it in the link on the Mac, after `host=`.
 - **Texts or codes are missing on the Mac.** Check SMS in Permissions and that it says Granted.
+- **One-time codes do not arrive on Android 17.** apnum targets Android 16 on purpose so the system still gives it SMS. If a messaging app hides the message from apnum anyway, the code is also read from that app's notification (needs Notification access).
 - **The clipboard says unavailable.** Android only lets the app on screen read the clipboard. Open apnum on the phone and try again.
 - **An alarm did not ring.** Check Battery optimisation is Unrestricted and the alarm switch is on. After a restart, open the app once if your phone blocks apps from starting at boot.
 - **Ring does not make a sound.** It uses the alarm volume, which works on silent. Do Not Disturb can still mute alarms; allow alarms in Do Not Disturb.

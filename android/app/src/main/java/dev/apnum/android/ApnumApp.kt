@@ -46,6 +46,9 @@ import kotlinx.serialization.json.put
 class AppGraph(app: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val store = PrefsStore(app)
+    val settings = dev.apnum.android.update.AppSettings(app)
+    val updater = dev.apnum.android.update.Updater(app, scope, settings)
+    val otpDedupe = dev.apnum.android.phone.OtpDedupe()
     private val identity = store.identity()
     val registry = ToolRegistry { Perms.has(app, it) }
     val ringer = Ringer(app, scope) { active -> link.sendEvent("ring", buildJsonObject { put("active", active) }) }

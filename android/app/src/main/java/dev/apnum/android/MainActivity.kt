@@ -55,6 +55,7 @@ class MainActivity : ComponentActivity() {
         val graph = ApnumApp.graph(this)
         if (Build.VERSION.SDK_INT >= 37) graph.link.setLocalNetworkAllowed(dev.apnum.android.phone.Perms.has(this, LOCAL_NETWORK))
         graph.startMonitors()
+        graph.updater.autoCheckIfDue()
         graph.clipboard.foreground(true)
     }
 

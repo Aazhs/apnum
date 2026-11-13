@@ -83,7 +83,7 @@ fun AppRoot(graph: AppGraph, tab: Tab, onTab: (Tab) -> Unit, resumeCount: Int, s
                         NotesScreen(graph.noteRepo, status)
                     }
                     Tab.Permissions -> PermissionsScreen(resumeCount) { graph.startMonitors() }
-                    Tab.Settings -> SettingsScreen(mac, graph.store.identity().name) { link.unpair() }
+                    Tab.Settings -> SettingsScreen(mac, graph.store.identity().name, graph, resumeCount) { link.unpair() }
                 }
             }
         }
