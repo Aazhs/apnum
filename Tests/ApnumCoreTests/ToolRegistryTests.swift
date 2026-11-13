@@ -68,6 +68,43 @@ private struct Boom: Tool {
         #expect(await audit.recent(limit: 1).first?.outcome == .error)
     }
 
+    @Test func remoteToolsAreListedCalledAuditedAndRemoved() async throws {
+        let r = registry()
+        let remote = ToolDescriptor(name: "phone.ping", summary: "Pings the phone", tier: .read, inputSchema: Schema.empty.json)
+        let clash = ToolDescriptor(name: "test.echo", summary: "Would shadow a local tool", tier: .read, inputSchema: Schema.empty.json)
+        r.setRemoteTools(source: "phone", descriptors: [remote, clash]) { tool, input, context in
+            ["tool": .string(tool), "caller": .string(context.caller.description), "echo": input]
+        }
+        #expect(r.descriptors.map(\.name) == ["phone.ping", "test.boom", "test.echo"])
+        #expect(r.localDescriptors.map(\.name) == ["test.boom", "test.echo"])
+        #expect(r.descriptor(named: "phone.ping")?.summary == "Pings the phone")
+
+        let out = try await r.callJSON("phone.ping", input: ["a": 1], caller: .agent("x"))
+        #expect(out["tool"] == "phone.ping")
+        #expect(out["caller"] == "agent:x")
+        #expect(await audit.recent(limit: 1).first?.tool == "phone.ping")
+
+        // The local tool still answers under its own name.
+        #expect(try await r.callJSON("test.echo", input: ["text": "hi"], caller: .ui) == ["result": "hi"])
+
+        r.removeRemoteTools(source: "phone")
+        await #expect(throws: ToolError.notFound("phone.ping")) {
+            _ = try await r.callJSON("phone.ping", caller: .ui)
+        }
+    }
+
+    @Test func trustedCallersMayRunDangerousTools() async throws {
+        let policy = DefaultPermissionPolicy(trusted: { $0 == .phone("moto") })
+        let r = registry(policy: policy)
+        await #expect(throws: ToolError.failed("boom")) {  // allowed, so it reaches the tool, which fails
+            _ = try await r.callJSON("test.boom", caller: .phone("moto"))
+        }
+        await #expect(throws: ToolError.self) {
+            _ = try await r.callJSON("test.boom", caller: .phone("other"))
+        }
+        #expect(await audit.recent(limit: 1).first?.outcome == .denied)
+    }
+
     @Test func descriptorsIncludeSchema() {
         let d = registry().descriptor(named: "test.echo")
         #expect(d?.inputSchema["required"] == ["text"])

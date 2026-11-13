@@ -12,16 +12,23 @@ public protocol PermissionPolicy: Sendable {
 /// The user (UI, CLI) and internal work may run anything.
 /// Agents and the phone may read and write, but not run dangerous tools.
 public struct DefaultPermissionPolicy: PermissionPolicy {
-    public init() {}
+    private let trusted: (@Sendable (Caller) async -> Bool)?
+
+    /// - Parameter trusted: asked when an agent or phone wants to run a dangerous tool;
+    ///   return true if the user has allowed that caller to (for example the paired phone
+    ///   with "Allow dangerous actions" turned on).
+    public init(trusted: (@Sendable (Caller) async -> Bool)? = nil) {
+        self.trusted = trusted
+    }
 
     public func decide(_ tool: ToolDescriptor, caller: Caller) async -> PermissionDecision {
         switch caller {
         case .ui, .cli, .system:
             return .allow
         case .agent, .phone:
-            return tool.tier < .dangerous
-                ? .allow
-                : .deny("\(tool.name) needs approval on the Mac, which is not built yet")
+            if tool.tier < .dangerous { return .allow }
+            if let trusted, await trusted(caller) { return .allow }
+            return .deny("\(tool.name) is a dangerous action. Allow it for this device on the Mac first.")
         }
     }
 }

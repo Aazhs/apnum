@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// A type-erased tool, so feature modules can hand the registry a list.
 public struct AnyTool: Sendable {
@@ -27,6 +28,16 @@ public final class ToolRegistry: Sendable {
     private let policy: any PermissionPolicy
     private let audit: AuditLog?
 
+    /// Runs a tool that lives on another device (the paired phone).
+    public typealias RemoteHandler = @Sendable (_ tool: String, _ input: JSONValue, _ context: ToolContext) async throws -> JSONValue
+
+    private struct RemoteSource {
+        var descriptors: [String: ToolDescriptor]
+        var handler: RemoteHandler
+    }
+
+    private let remotes = Mutex<[String: RemoteSource]>([:])
+
     public init(tools: [AnyTool], policy: any PermissionPolicy = DefaultPermissionPolicy(), audit: AuditLog? = nil) {
         var map: [String: AnyTool] = [:]
         for tool in tools {
@@ -38,10 +49,31 @@ public final class ToolRegistry: Sendable {
         self.audit = audit
     }
 
-    /// Every registered tool, sorted by name.
-    public var descriptors: [ToolDescriptor] { tools.values.map(\.descriptor).sorted { $0.name < $1.name } }
+    /// Every tool that can be called right now, local and remote, sorted by name.
+    public var descriptors: [ToolDescriptor] {
+        let remote = remotes.withLock { $0.values.flatMap { $0.descriptors.values } }
+        return (tools.values.map(\.descriptor) + remote).sorted { $0.name < $1.name }
+    }
 
-    public func descriptor(named name: String) -> ToolDescriptor? { tools[name]?.descriptor }
+    /// Only the tools that run on this Mac (what the phone is told about).
+    public var localDescriptors: [ToolDescriptor] { tools.values.map(\.descriptor).sorted { $0.name < $1.name } }
+
+    public func descriptor(named name: String) -> ToolDescriptor? {
+        tools[name]?.descriptor ?? remotes.withLock { sources in sources.values.lazy.compactMap { $0.descriptors[name] }.first }
+    }
+
+    /// Adds (or replaces) the tools offered by a remote source such as the paired phone.
+    /// Names that collide with a local tool are ignored: local tools always win.
+    public func setRemoteTools(source: String, descriptors: [ToolDescriptor], handler: @escaping RemoteHandler) {
+        let usable = descriptors.filter { tools[$0.name] == nil }
+        let map = Dictionary(usable.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        remotes.withLock { $0[source] = RemoteSource(descriptors: map, handler: handler) }
+    }
+
+    /// Removes a remote source's tools (when the phone disconnects).
+    public func removeRemoteTools(source: String) {
+        remotes.withLock { _ = $0.removeValue(forKey: source) }
+    }
 
     /// Typed call, used by the Mac UI.
     public func call<T: Tool>(_ type: T.Type, _ input: T.Input, caller: Caller = .ui) async throws -> T.Output {
@@ -58,9 +90,20 @@ public final class ToolRegistry: Sendable {
 
     /// JSON call, used by agents, the phone and the CLI.
     public func callJSON(_ name: String, input: JSONValue = .null, caller: Caller) async throws -> JSONValue {
-        guard let entry = tools[name] else { throw ToolError.notFound(name) }
-        return try await perform(entry.descriptor, caller: caller) { context in
-            try await entry.runJSON(input, context)
+        if let entry = tools[name] {
+            return try await perform(entry.descriptor, caller: caller) { context in
+                try await entry.runJSON(input, context)
+            }
+        }
+        let remote = remotes.withLock { sources -> (ToolDescriptor, RemoteHandler)? in
+            for source in sources.values {
+                if let descriptor = source.descriptors[name] { return (descriptor, source.handler) }
+            }
+            return nil
+        }
+        guard let (descriptor, handler) = remote else { throw ToolError.notFound(name) }
+        return try await perform(descriptor, caller: caller) { context in
+            try await handler(name, input == .null ? .object([:]) : input, context)
         }
     }
 
