@@ -8,6 +8,8 @@ A lightweight, open-source Mac app for one person's day: alarms, timers, notes, 
 |---|---|
 | ![Today at dusk](docs/screenshots/today-dusk.png) | ![Today at night](docs/screenshots/today-dark.png) |
 
+Every screen wears the sky: the whole app is tinted from the land under the live sky over your city, deep green under a blue day, plum at dusk and indigo at night.
+
 ## The live sky
 
 Today opens on a small pixel world under the real sky for your city, ported from [aarshj.me](https://aarshj.me):
@@ -30,8 +32,8 @@ An Android companion app will follow, bringing the phone's SMS, OTPs, calls, not
 | ![Stopwatch](docs/screenshots/stopwatch.png) | ![Calendar](docs/screenshots/calendar.png) |
 | **Notes** | **Reminders** |
 | ![Notes](docs/screenshots/notes.png) | ![Reminders](docs/screenshots/reminders.png) |
-| **Activity: every tool agents can use** | |
-| ![Activity](docs/screenshots/activity.png) | |
+| **Phone: messages, codes, calls** | **Activity: every tool agents can use** |
+| ![Phone](docs/screenshots/phone.png) | ![Activity](docs/screenshots/activity.png) |
 
 ## Features
 
