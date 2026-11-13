@@ -100,6 +100,7 @@ struct DigitField: View {
 
     @FocusState private var focused: Bool
     @State private var hovering: Int?
+    @Environment(\.skyTheme) private var theme
 
     var body: some View {
         HStack(alignment: .center, spacing: 2) {
@@ -115,10 +116,10 @@ struct DigitField: View {
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.quinary))
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(theme.panel))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(focused ? Color.accentColor.opacity(0.7) : Color.primary.opacity(0.08), lineWidth: focused ? 2 : 1)
+                .strokeBorder(focused ? theme.accent.opacity(0.8) : theme.edge, lineWidth: focused ? 2 : 1)
         }
         .focusable()
         .focused($focused)
@@ -142,7 +143,7 @@ struct DigitField: View {
                 .padding(.horizontal, 8)
                 .background {
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(isActive ? Color.accentColor.opacity(0.22) : .clear)
+                        .fill(isActive ? theme.accent.opacity(0.28) : .clear)
                 }
                 .contentShape(.rect)
                 .onTapGesture {
