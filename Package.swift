@@ -3,7 +3,7 @@ import PackageDescription
 
 // Each feature is its own target that depends only on ApnumCore.
 // The app target is the composition root that wires them together.
-let features = ["ApnumAlarms", "ApnumTimers", "ApnumNotes", "ApnumCalendar", "ApnumSystem", "ApnumSky"]
+let features = ["ApnumAlarms", "ApnumTimers", "ApnumNotes", "ApnumCalendar", "ApnumSystem", "ApnumSky", "ApnumUpdate"]
 
 let package = Package(
     name: "apnum",
