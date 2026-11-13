@@ -39,9 +39,19 @@ public struct PairedDevice: Codable, Sendable, Equatable {
 public struct LinkSettings: Codable, Sendable, Equatable {
     public var enabled = true
     public var autoCopyCodes = true
-    public init(enabled: Bool = true, autoCopyCodes: Bool = true) {
+    /// Keep the Mac and phone clipboards in step (plain text only).
+    public var syncClipboard = true
+    public init(enabled: Bool = true, autoCopyCodes: Bool = true, syncClipboard: Bool = true) {
         self.enabled = enabled
         self.autoCopyCodes = autoCopyCodes
+        self.syncClipboard = syncClipboard
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        enabled = try c.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+        autoCopyCodes = try c.decodeIfPresent(Bool.self, forKey: .autoCopyCodes) ?? true
+        syncClipboard = try c.decodeIfPresent(Bool.self, forKey: .syncClipboard) ?? true
     }
 }
 

@@ -6,7 +6,9 @@ struct PhoneMessagesPanel: View {
     @Environment(AppModel.self) private var model
     @Environment(\.skyTheme) private var theme
     @State private var selected: String?
-    @State private var thread: [PhoneSMS] = []
+    /// The thread as last fetched from the phone (older history). Live messages come from `model.phone.messages`.
+    @State private var fetched: [PhoneSMS] = []
+    @State private var sentCount = 0
     @State private var draft = ""
     @State private var sending = false
 
@@ -24,6 +26,15 @@ struct PhoneMessagesPanel: View {
             .sorted { $0.latest.date > $1.latest.date }
     }
 
+    /// Fetched history plus everything the phone pushed since, so a new message shows without waiting for a re-fetch.
+    private var thread: [PhoneSMS] {
+        guard let selected else { return [] }
+        var byID: [String: PhoneSMS] = [:]
+        for message in fetched { byID[message.id] = message }
+        for message in model.phone.messages where message.address == selected { byID[message.id] = message }
+        return byID.values.sorted { $0.date < $1.date }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             PageHeading("Messages")
@@ -37,23 +48,23 @@ struct PhoneMessagesPanel: View {
                     Divider()
                     threadView
                 }
-                .frame(height: 300)
+                .frame(height: 340)
                 .clipShape(.rect(cornerRadius: 12, style: .continuous))
             }
         }
         .padding(20)
         .skyPanel(theme)
         .onAppear { if selected == nil { selected = conversations.first?.address } }
-        .task(id: ThreadKey(address: selected, count: model.phone.messages.count)) {
-            guard let selected else { thread = []; return }
-            let messages = await model.phoneThread(address: selected)
-            thread = messages.sorted { $0.date < $1.date }
+        .onChange(of: conversations.first?.address) { _, first in if selected == nil { selected = first } }
+        .task(id: ThreadKey(address: selected, sent: sentCount)) {
+            guard let selected else { fetched = []; return }
+            fetched = await model.phoneThread(address: selected)
         }
     }
 
     private struct ThreadKey: Equatable {
         var address: String?
-        var count: Int
+        var sent: Int
     }
 
     private var list: some View {
@@ -136,8 +147,20 @@ struct PhoneMessagesPanel: View {
     }
 
     private func replyBar(to address: String) -> some View {
+        let canReply = PhoneNumber.isDialable(address)
+        return VStack(spacing: 6) {
+            if !canReply {
+                Text("You can't reply to this sender.").font(.caption).foregroundStyle(.secondary)
+            }
+            replyFields(to: address, canReply: canReply)
+        }
+        .padding(10)
+    }
+
+    private func replyFields(to address: String, canReply: Bool) -> some View {
         HStack(spacing: 8) {
             TextField("Reply", text: $draft)
+                .disabled(!canReply)
                 .textFieldStyle(.plain)
                 .padding(.horizontal, 14)
                 .frame(height: 34)
@@ -145,19 +168,19 @@ struct PhoneMessagesPanel: View {
                 .onSubmit { send(to: address) }
             Button("Send") { send(to: address) }
                 .buttonStyle(.pill(theme.isActive ? theme.accent : .accentColor))
-                .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending || !model.hasTool("phone.sms.send"))
+                .disabled(!canReply || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending || !model.hasTool("phone.sms.send"))
         }
-        .padding(10)
     }
 
     private func send(to address: String) {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty, !sending else { return }
+        guard !text.isEmpty, !sending, PhoneNumber.isDialable(address) else { return }
         sending = true
         Task {
             if await model.run("phone.sms.send", ["to": .string(address), "body": .string(text)]) != nil {
                 draft = ""
                 await model.refreshPhone()
+                sentCount += 1
             }
             sending = false
         }

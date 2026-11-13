@@ -20,6 +20,7 @@ struct LinkStatusTool: Tool {
         var status: String
         var enabled: Bool
         var autoCopyCodes: Bool
+        var syncClipboard: Bool
         var device: PairedDevice?
         var connectedSince: Date?
         var fingerprint: String?
@@ -34,16 +35,16 @@ struct LinkStatusTool: Tool {
         let fingerprint = await link.fingerprint()
         switch await link.status() {
         case .off:
-            return Output(status: "off", enabled: settings.enabled, autoCopyCodes: settings.autoCopyCodes, fingerprint: fingerprint)
+            return Output(status: "off", enabled: settings.enabled, autoCopyCodes: settings.autoCopyCodes, syncClipboard: settings.syncClipboard, fingerprint: fingerprint)
         case .notPaired:
-            return Output(status: "notPaired", enabled: settings.enabled, autoCopyCodes: settings.autoCopyCodes, fingerprint: fingerprint)
+            return Output(status: "notPaired", enabled: settings.enabled, autoCopyCodes: settings.autoCopyCodes, syncClipboard: settings.syncClipboard, fingerprint: fingerprint)
         case .waitingForPhone:
             return Output(
-                status: "waitingForPhone", enabled: settings.enabled, autoCopyCodes: settings.autoCopyCodes,
+                status: "waitingForPhone", enabled: settings.enabled, autoCopyCodes: settings.autoCopyCodes, syncClipboard: settings.syncClipboard,
                 device: await link.pairedDevice(), fingerprint: fingerprint)
         case .connected(let device, let since):
             return Output(
-                status: "connected", enabled: settings.enabled, autoCopyCodes: settings.autoCopyCodes, device: device,
+                status: "connected", enabled: settings.enabled, autoCopyCodes: settings.autoCopyCodes, syncClipboard: settings.syncClipboard, device: device,
                 connectedSince: since, fingerprint: fingerprint)
         }
     }
@@ -98,14 +99,16 @@ struct LinkSettingsSetTool: Tool {
     struct Input: Decodable, Sendable {
         var enabled: Bool?
         var autoCopyCodes: Bool?
+        var syncClipboard: Bool?
         var trustDangerous: Bool?
     }
     static let name = "link.settings.set"
-    static let summary = "Change phone link settings: turn the link on or off, copy one-time codes automatically, or allow the phone to run dangerous actions."
+    static let summary = "Change phone link settings: turn the link on or off, copy one-time codes automatically, sync the clipboard with the phone, or allow the phone to run dangerous actions."
     static let tier = PermissionTier.write
     static let inputSchema = Schema.object([
         "enabled": .boolean("Turn the phone link on or off"),
         "autoCopyCodes": .boolean("Copy one-time codes from the phone to the Mac clipboard when they arrive"),
+        "syncClipboard": .boolean("Keep the Mac and phone clipboards in sync (plain text only)"),
         "trustDangerous": .boolean("Allow the paired phone to run dangerous Mac actions"),
     ])
 
@@ -114,6 +117,7 @@ struct LinkSettingsSetTool: Tool {
             throw ToolError.denied("Only the user can change what the phone is allowed to do.")
         }
         if let v = input.autoCopyCodes { try await link.setAutoCopyCodes(v) }
+        if let v = input.syncClipboard { try await link.setSyncClipboard(v) }
         if let v = input.trustDangerous { try await link.setTrustDangerous(v) }
         if let v = input.enabled { try await link.setEnabled(v) }
         return Ack()

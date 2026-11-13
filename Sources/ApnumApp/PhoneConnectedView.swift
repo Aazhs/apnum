@@ -28,14 +28,19 @@ struct PhoneConnectedView: View {
                     PhoneCodePanel(code: code)
                 }
                 PhoneMessagesPanel()
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 340), spacing: 20, alignment: .top)], alignment: .leading, spacing: 20) {
-                    PhoneNotificationsPanel()
-                    PhoneCallsPanel()
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 20) {
+                        PhoneNotificationsPanel().frame(minWidth: 340)
+                        PhoneCallsPanel().frame(minWidth: 340)
+                    }
+                    VStack(alignment: .leading, spacing: 20) {
+                        PhoneNotificationsPanel()
+                        PhoneCallsPanel()
+                    }
                 }
             }
             .padding(.horizontal, 32)
             .padding(.vertical, 24)
-            .frame(maxWidth: 900, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .task { await model.refreshPhone() }
@@ -116,21 +121,21 @@ private struct PhoneHeader: View {
 
     @ViewBuilder
     private var actionButtons: some View {
-        Button { Task { await model.run("phone.ring", .object([:])) } } label: {
-            Label("Find my phone", systemImage: "bell.and.waves.left.and.right")
+        let ringing = model.phone.findRinging
+        Button { Task { await model.findMyPhone(stop: ringing) } } label: {
+            Label(ringing ? "Stop ringing" : "Find my phone", systemImage: ringing ? "bell.slash.fill" : "bell.and.waves.left.and.right")
         }
-        .buttonStyle(.pill)
+        .buttonStyle(ringing ? PillButtonStyle(tint: .red) : PillButtonStyle())
         .disabled(!model.hasTool("phone.ring"))
-        Button { Task { await model.sendClipboardToPhone() } } label: {
-            Label("Send clipboard", systemImage: "arrow.up.doc.on.clipboard")
+        HStack(spacing: 8) {
+            Image(systemName: "doc.on.clipboard").foregroundStyle(.secondary)
+            Text(model.linkSettings.syncClipboard ? "Clipboard syncs automatically" : "Clipboard sync is off")
+                .font(.callout).foregroundStyle(.secondary)
+            Button("Send now") { model.sendClipboardNow() }
+                .buttonStyle(.link)
+                .font(.callout)
         }
-        .buttonStyle(.pill)
-        .disabled(!model.hasTool("phone.clipboard.set"))
-        Button { Task { await model.getPhoneClipboard() } } label: {
-            Label("Get phone clipboard", systemImage: "arrow.down.doc")
-        }
-        .buttonStyle(.pill)
-        .disabled(!model.hasTool("phone.clipboard.get"))
+        .padding(.leading, 6)
     }
 }
 

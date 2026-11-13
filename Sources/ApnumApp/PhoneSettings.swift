@@ -16,8 +16,11 @@ struct PhoneSettingsTab: View {
                 Toggle("Copy one-time codes automatically", isOn: Binding(
                     get: { model.linkSettings.autoCopyCodes },
                     set: { value in Task { await model.setLink(autoCopyCodes: value) } }))
+                Toggle("Sync clipboard with phone", isOn: Binding(
+                    get: { model.linkSettings.syncClipboard },
+                    set: { value in Task { await model.setLink(syncClipboard: value) } }))
             } footer: {
-                Text("When a text with a code arrives on the phone, apnum shows a notification and, if this is on, puts the code on the clipboard.")
+                Text("Plain text you copy appears on the other device. Items password managers mark as secret are never sent. When a text with a code arrives on the phone, apnum shows a notification and, if this is on, puts the code on the clipboard.")
             }
             .themedRows(theme)
 

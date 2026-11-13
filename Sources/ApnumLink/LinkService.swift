@@ -46,6 +46,8 @@ public actor LinkService {
     private var onCode: (@Sendable (PhoneCode) async -> Void)?
     private var ringingProvider: (@Sendable () async -> [JSONValue])?
     private var lastRinging: [JSONValue]?
+    private var onClipboard: (@Sendable (String) async -> Void)?
+    private var ringTask: Task<Void, Never>?
 
     /// - Parameters:
     ///   - port: 0 picks any free port (tests).
@@ -72,6 +74,17 @@ public actor LinkService {
 
     /// Called with each one-time code the phone reports.
     public func setOnCode(_ hook: (@Sendable (PhoneCode) async -> Void)?) { onCode = hook }
+
+    /// Called with the plain text of each `clipboard` event from the phone (only while clipboard sync is on).
+    public func setOnClipboard(_ hook: (@Sendable (String) async -> Void)?) { onClipboard = hook }
+
+    /// Sends an event to the connected phone. Returns false when no phone is connected.
+    @discardableResult
+    public func sendEvent(topic: String, data: JSONValue) async -> Bool {
+        guard let current else { return false }
+        await current.send(["t": "event", "topic": .string(topic), "data": data])
+        return true
+    }
 
     /// Supplies the Mac's ringing alarms and timers as `[{id, kind, title, body, canSnooze}]` (set by the app, so the
     /// link stays independent of the alarm and timer modules).
@@ -148,6 +161,11 @@ public actor LinkService {
 
     public func setAutoCopyCodes(_ on: Bool) async throws {
         try await store.update { $0.settings.autoCopyCodes = on }
+        changes.publish(.link)
+    }
+
+    public func setSyncClipboard(_ on: Bool) async throws {
+        try await store.update { $0.settings.syncClipboard = on }
         changes.publish(.link)
     }
 
@@ -241,6 +259,7 @@ public actor LinkService {
         current = session
         connectedSince = Date()
         phone = PhoneState()
+        ringTask?.cancel()
         lastRinging = nil
         try? await store.update { $0.device?.lastSeen = Date() }
         if let old, old.id != session.id { await old.close(reason: "replaced") }
@@ -254,6 +273,7 @@ public actor LinkService {
             connectedSince = nil
             infoTask?.cancel()
             registry?.removeRemoteTools(source: "phone")
+            ringTask?.cancel()
             phone = PhoneState()
             try? await store.update { $0.device?.lastSeen = Date() }
             changes.publish(.phone)
@@ -331,7 +351,30 @@ public actor LinkService {
     /// Calls a tool on the connected phone, bypassing the registry (the registry forwards here).
     public func callPhone(tool: String, input: JSONValue = .null) async throws -> JSONValue {
         guard let current else { throw ToolError.unavailable("No phone is connected.") }
-        return try await current.call(tool: tool, input: input == .null ? .object([:]) : input)
+        let output = try await current.call(tool: tool, input: input == .null ? .object([:]) : input)
+        if tool == "phone.ring" { noteRing(result: output) }
+        return output
+    }
+
+    /// Tracks "Find my phone" from the tool result; the `ring` event normally ends it, this timer covers a phone that never sends it.
+    private func noteRing(result: JSONValue) {
+        ringTask?.cancel()
+        guard LinkJSON.bool(result["ringing"]) == true else {
+            setFindRinging(false)
+            return
+        }
+        setFindRinging(true)
+        let seconds = LinkJSON.number(result["seconds"]) ?? 30
+        ringTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(seconds + 1))
+            if !Task.isCancelled { await self?.setFindRinging(false) }
+        }
+    }
+
+    private func setFindRinging(_ on: Bool) {
+        guard phone.findRinging != on else { return }
+        phone.findRinging = on
+        changes.publish(.phone)
     }
 
     /// Fetches battery, recent messages, notifications and call state from the phone again.
@@ -346,7 +389,12 @@ public actor LinkService {
             changes.publish(.phone)
         }
         if let list = await fetch("phone.sms.list", ["limit": 50]) {
-            phone.messages = Array(Self.items(list).compactMap { Self.parseSMS($0) }.sorted { $0.date > $1.date }.prefix(50))
+            let fetched = Self.items(list).compactMap { Self.parseSMS($0) }.sorted { $0.date > $1.date }
+            // A message pushed while this fetch was in flight is newer than everything fetched: keep it.
+            let newest = fetched.first?.date ?? .distantPast
+            let ids = Set(fetched.map(\.id))
+            let pushed = phone.messages.filter { $0.date > newest && !ids.contains($0.id) }
+            phone.messages = Array((pushed + fetched).sorted { $0.date > $1.date }.prefix(50))
             changes.publish(.phone)
         }
         if let list = await fetch("phone.notifications.list") {
@@ -365,11 +413,13 @@ public actor LinkService {
         switch topic {
         case "sms.received":
             guard let sms = Self.parseSMS(data, incoming: true) else { return }
+            let isNew = !phone.messages.contains { $0.id == sms.id }
             phone.messages.removeAll { $0.id == sms.id }
             phone.messages.insert(sms, at: 0)
+            phone.messages.sort { $0.date > $1.date }
             if phone.messages.count > 50 { phone.messages.removeLast(phone.messages.count - 50) }
             var code: PhoneCode?
-            if let otp = LinkJSON.string(data["otp"]) ?? LinkJSON.number(data["otp"]).map({ String(Int($0)) }), !otp.isEmpty {
+            if isNew, let otp = LinkJSON.string(data["otp"]) ?? LinkJSON.number(data["otp"]).map({ String(Int($0)) }), !otp.isEmpty {
                 code = PhoneCode(code: otp, from: sms.title, date: sms.date)
                 phone.latestCode = code
             }
@@ -390,6 +440,14 @@ public actor LinkService {
         case "phone.ringing":
             if case .array(let ids)? = data["ids"] { phone.ringingIDs = ids.compactMap { LinkJSON.string($0) } } else { phone.ringingIDs = [] }
             changes.publish(.phone)
+        case "ring":
+            ringTask?.cancel()
+            setFindRinging(LinkJSON.bool(data["active"]) ?? false)
+        case "clipboard":
+            guard await store.file.settings.syncClipboard, let text = LinkJSON.string(data["text"]), !text.isEmpty,
+                text.count <= 100_000
+            else { return }
+            await onClipboard?(text)
         case "battery":
             if let p = LinkJSON.number(data["percent"]) { phone.battery = Int(p) }
             if let c = LinkJSON.bool(data["charging"]) { phone.charging = c }
@@ -400,6 +458,17 @@ public actor LinkService {
     }
 
     // MARK: Parsing helpers
+
+    /// Reads the output of `phone.calls.recent`, newest first.
+    public static func parseCallLog(_ value: JSONValue) -> [PhoneCallLogEntry] {
+        items(value).compactMap { v -> PhoneCallLogEntry? in
+            guard let number = LinkJSON.string(v["number"]) else { return nil }
+            let kind = LinkJSON.string(v["type"]).flatMap(PhoneCallLogEntry.Kind.init(rawValue:)) ?? .incoming
+            return PhoneCallLogEntry(
+                number: number, contactName: LinkJSON.string(v["contactName"]), kind: kind,
+                date: LinkJSON.date(ms: v["dateMs"]) ?? Date(), durationSec: Int(LinkJSON.number(v["durationSec"]) ?? 0))
+        }.sorted { $0.date > $1.date }
+    }
 
     /// Reads the output of `phone.sms.list` (an array, or an object holding one), newest first.
     public static func parseMessages(_ value: JSONValue) -> [PhoneSMS] {

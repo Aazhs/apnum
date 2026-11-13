@@ -44,6 +44,8 @@ public struct PhoneSMS: Sendable, Equatable, Identifiable, Codable {
     public var incoming: Bool
 
     public var title: String { (contactName?.isEmpty == false ? contactName : nil) ?? address }
+    /// False for alphanumeric sender IDs such as `JD-GROWWO-S`, which cannot receive a reply.
+    public var canReply: Bool { PhoneNumber.isDialable(address) }
 
     public init(id: String, address: String, contactName: String? = nil, body: String, date: Date, incoming: Bool = true) {
         self.id = id
@@ -52,6 +54,43 @@ public struct PhoneSMS: Sendable, Equatable, Identifiable, Codable {
         self.body = body
         self.date = date
         self.incoming = incoming
+    }
+}
+
+/// What counts as a number the phone can send an SMS to.
+public enum PhoneNumber {
+    /// Digits with an optional leading `+`, plus spaces, dashes, dots and brackets (which the phone strips).
+    public static func isDialable(_ address: String) -> Bool {
+        let trimmed = address.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return false }
+        var digits = 0
+        for (index, ch) in trimmed.enumerated() {
+            if ch.isASCII && ch.isNumber { digits += 1; continue }
+            if ch == "+" && index == 0 { continue }
+            if " -.()".contains(ch) { continue }
+            return false
+        }
+        return digits >= 3
+    }
+}
+
+/// One row of the phone's call log (`phone.calls.recent`).
+public struct PhoneCallLogEntry: Sendable, Equatable, Identifiable {
+    public enum Kind: String, Sendable { case incoming, outgoing, missed }
+    public var number: String
+    public var contactName: String?
+    public var kind: Kind
+    public var date: Date
+    public var durationSec: Int
+    public var id: String { "\(number)-\(Int(date.timeIntervalSince1970))-\(kind.rawValue)" }
+    public var title: String { (contactName?.isEmpty == false ? contactName : nil) ?? number }
+
+    public init(number: String, contactName: String? = nil, kind: Kind, date: Date, durationSec: Int = 0) {
+        self.number = number
+        self.contactName = contactName
+        self.kind = kind
+        self.date = date
+        self.durationSec = durationSec
     }
 }
 
@@ -110,6 +149,8 @@ public struct PhoneState: Sendable, Equatable {
     public var latestCode: PhoneCode?
     /// Ids of the alarms the phone is ringing right now (from its `phone.ringing` event).
     public var ringingIDs: [String] = []
+    /// True while the phone is ringing because of "Find my phone".
+    public var findRinging = false
 
     public init() {}
 
