@@ -37,6 +37,7 @@ struct ActivityView: View {
 // MARK: - Recent
 
 private struct RecentTable: View {
+    @Environment(\.skyTheme) private var theme
     let entries: [AuditEntry]
 
     var body: some View {
@@ -71,6 +72,9 @@ private struct RecentTable: View {
                 }
                 .width(min: 60, ideal: 80)
             }
+            .scrollContentBackground(theme.isActive ? .hidden : .automatic)
+            .alternatingRowBackgrounds(theme.isActive ? .disabled : .enabled)
+            .background(theme.isActive ? theme.background : Color.clear)
         }
     }
 
@@ -151,6 +155,7 @@ private struct ToolGroup: Identifiable {
 }
 
 private struct ToolsList: View {
+    @Environment(\.skyTheme) private var theme
     let tools: [ToolDescriptor]
     @Binding var selection: String?
 
@@ -162,6 +167,11 @@ private struct ToolsList: View {
                 Section(group.title) {
                     ForEach(group.tools, id: \.name) { tool in
                         ToolRow(tool: tool).tag(tool.name)
+                            .listRowSeparatorTint(theme.edge)
+                            .listRowBackground(
+                                selection == tool.name && theme.isActive
+                                    ? RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.raised.opacity(0.7)).padding(.horizontal, 4)
+                                    : nil)
                     }
                 }
             }
@@ -171,6 +181,8 @@ private struct ToolsList: View {
                 .listRowSeparator(.hidden)
                 .selectionDisabled()
         }
+        .scrollContentBackground(theme.isActive ? .hidden : .automatic)
+        .background(theme.isActive ? theme.background : Color.clear)
         .inspector(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selection = nil } })) {
             if let selected {
                 ToolInspector(tool: selected)
@@ -254,6 +266,7 @@ private struct Parameter: Identifiable {
 }
 
 private struct ToolInspector: View {
+    @Environment(\.skyTheme) private var theme
     let tool: ToolDescriptor
     @State private var showSchema = false
 
@@ -309,7 +322,7 @@ private struct ToolInspector: View {
                                     Text(fact).font(.caption).foregroundStyle(.secondary)
                                 }
                             }
-                            if p.id != parameters.last?.id { Divider() }
+                            if p.id != parameters.last?.id { Rectangle().fill(theme.edge).frame(height: 1) }
                         }
                     }
                 }
@@ -325,5 +338,6 @@ private struct ToolInspector: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .background(theme.isActive ? theme.panel : Color.clear)
     }
 }

@@ -61,9 +61,24 @@ struct RemindersView: View {
         return n == 0 ? "All done" : "\(n) open"
     }
 
+    /// "2 overdue, 1 due today".
+    private var summaryLine: String {
+        let now = Date.now
+        let overdue = visible.filter { $0.dueDate.map { DueText(date: $0, now: now).overdue } ?? false }.count
+        let today = visible.filter { r in
+            guard let d = r.dueDate else { return false }
+            return Calendar.current.isDateInToday(d) && !DueText(date: d, now: now).overdue
+        }.count
+        var parts: [String] = []
+        if overdue > 0 { parts.append("\(overdue) overdue") }
+        if today > 0 { parts.append("\(today) due today") }
+        return parts.isEmpty ? "Nothing due today" : parts.joined(separator: ", ")
+    }
+
     private var content: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 26) {
+                if !visible.isEmpty { Text(summaryLine).font(.callout).foregroundStyle(.secondary).padding(.bottom, -10) }
                 ForEach(groups, id: \.list.id) { group in
                     ListSection(list: group.list, items: group.items) { id in
                         withAnimation(.smooth(duration: 0.3)) { _ = completing.insert(id) }
@@ -93,6 +108,7 @@ struct RemindersView: View {
 // MARK: - Grouping and rows
 
 private struct ListSection: View {
+    @Environment(\.skyTheme) private var theme
     let list: ReminderList
     let items: [Reminder]
     let onComplete: (String) -> Void
@@ -105,11 +121,13 @@ private struct ListSection: View {
                 Spacer()
                 Text("\(items.count)").font(.headline).monospacedDigit().foregroundStyle(.secondary)
             }
+            .padding(.bottom, 6)
+            .overlay(alignment: .bottom) { Rectangle().fill(theme.edge).frame(height: 1) }
             .padding(.bottom, 4)
             ForEach(items) { item in
                 ReminderRow(reminder: item, tint: tint, onComplete: onComplete)
                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .leading)))
-                if item.id != items.last?.id { Divider().padding(.leading, 32) }
+                if item.id != items.last?.id { Rectangle().fill(theme.edge.opacity(0.6)).frame(height: 1).padding(.leading, 32) }
             }
         }
     }

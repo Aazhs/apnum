@@ -56,6 +56,7 @@ struct CalendarView: View {
     @State private var selected: CalendarEvent?
     @State private var popoverKey: String?
     @State private var newEvent: CalNewEvent?
+    @State private var daylight = CalDaylightStore()
 
     private var cal: Calendar { .current }
     private var mode: CalMode { CalMode(rawValue: modeRaw) ?? .week }
@@ -141,16 +142,17 @@ struct CalendarView: View {
 
     @ViewBuilder
     private var content: some View {
+        let _ = { if daylight.location != model.skySettings?.location { daylight.location = model.skySettings?.location } }()
         switch mode {
         case .month:
             CalMonthGrid(
                 days: days, month: anchor, events: events, selectedDay: cal.startOfDay(for: anchor),
                 selected: $selected, popoverKey: $popoverKey,
-                pickDay: { anchor = $0 },
+                pickDay: { anchor = $0 }, daylight: daylight,
                 openDay: { day in anchor = day; modeRaw = CalMode.day.rawValue })
         case .week, .day:
             CalTimeView(
-                days: days, events: events, isDay: mode == .day, selected: $selected, popoverKey: $popoverKey,
+                days: days, events: events, isDay: mode == .day, daylight: daylight, selected: $selected, popoverKey: $popoverKey,
                 openDay: { day in anchor = day; modeRaw = CalMode.day.rawValue },
                 newEvent: { start, allDay in newEvent = CalNewEvent(start: start, allDay: allDay) })
         }
@@ -195,10 +197,12 @@ private struct CalTimeView: View {
     let days: [Date]
     let events: [CalendarEvent]
     let isDay: Bool
+    let daylight: CalDaylightStore
     @Binding var selected: CalendarEvent?
     @Binding var popoverKey: String?
     let openDay: (Date) -> Void
     let newEvent: (Date, Bool) -> Void
+    @Environment(\.skyTheme) private var theme
 
     private var cal: Calendar { .current }
 
@@ -210,9 +214,10 @@ private struct CalTimeView: View {
             HStack(spacing: 0) {
                 grid(width: gridWidth, usePopover: !showPane)
                 if showPane {
-                    Divider()
+                    Rectangle().fill(theme.edge).frame(width: 1)
                     CalDetailPane(event: selected)
                         .frame(width: paneWidth - 1)
+                        .background(theme.isActive ? theme.panel : .clear)
                 }
             }
         }
@@ -227,9 +232,9 @@ private struct CalTimeView: View {
             CalAllDayRow(
                 days: days, colW: colW, perDay: allDay, selected: $selected, popoverKey: $popoverKey,
                 usePopover: usePopover, newEvent: newEvent)
-            Divider()
+            Rectangle().fill(theme.edge).frame(height: 1)
             CalHourGrid(
-                days: days, colW: colW, perDay: perDay.map { $0.filter { !$0.isAllDay } },
+                days: days, colW: colW, daylight: daylight, perDay: perDay.map { $0.filter { !$0.isAllDay } },
                 selected: $selected, popoverKey: $popoverKey, usePopover: usePopover, newEvent: newEvent)
         }
     }
@@ -242,6 +247,7 @@ private struct CalTimeView: View {
 }
 
 private struct CalDayHeader: View {
+    @Environment(\.skyTheme) private var theme
     let days: [Date]
     let colW: CGFloat
     let openDay: (Date) -> Void
@@ -270,10 +276,12 @@ private struct CalDayHeader: View {
             }
         }
         .frame(height: 44)
+        .background(theme.isActive ? theme.panel : .clear)
     }
 }
 
 private struct CalAllDayRow: View {
+    @Environment(\.skyTheme) private var theme
     let days: [Date]
     let colW: CGFloat
     let perDay: [[CalendarEvent]]
@@ -314,12 +322,13 @@ private struct CalAllDayRow: View {
                 .padding(.top, 3)
                 .frame(width: colW, height: height, alignment: .top)
                 .background(Calendar.current.isDateInWeekend(day) ? Color.primary.opacity(0.03) : .clear)
-                .overlay(alignment: .leading) { Divider() }
+                .overlay(alignment: .leading) { Rectangle().fill(theme.edge).frame(width: 1) }
                 .contentShape(.rect)
                 .onTapGesture(count: 2) { newEvent(day, true) }
             }
         }
         .frame(height: height)
+        .background(theme.isActive ? theme.panel : .clear)
     }
 }
 
@@ -354,8 +363,10 @@ private struct CalAllDayChip: View {
 /// Hour labels, grid lines and event blocks, in a vertical scroll view.
 private struct CalHourGrid: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.skyTheme) private var theme
     let days: [Date]
     let colW: CGFloat
+    let daylight: CalDaylightStore
     let perDay: [[CalendarEvent]]
     @Binding var selected: CalendarEvent?
     @Binding var popoverKey: String?
@@ -375,7 +386,8 @@ private struct CalHourGrid: View {
                             Color.clear.frame(height: calHourHeight).id(hour)
                         }
                     }
-                    CalGridLines(colW: colW, weekend: days.map { cal.isDateInWeekend($0) })
+                    CalDaylightShade(days: days, colW: colW, hourHeight: calHourHeight, gutter: calGutter, store: daylight)
+                    CalGridLines(colW: colW, weekend: days.map { cal.isDateInWeekend($0) }, edge: theme.edge)
                         .frame(width: calGutter + colW * CGFloat(days.count), height: totalHeight)
                         .contentShape(.rect)
                         .gesture(SpatialTapGesture(count: 2).onEnded { tap in addEvent(at: tap.location) })
@@ -429,7 +441,7 @@ private struct CalHourGrid: View {
                         .foregroundStyle(.red)
                         .frame(width: calGutter - 10, alignment: .trailing)
                         .padding(.vertical, 1)
-                        .background(.background)
+                        .background(theme.isActive ? theme.background : Color(nsColor: .windowBackgroundColor))
                         .offset(x: 0, y: y - 8)
                 }
                 .allowsHitTesting(false)
@@ -457,6 +469,7 @@ private struct CalHourGrid: View {
 private struct CalGridLines: View {
     let colW: CGFloat
     let weekend: [Bool]
+    let edge: Color
 
     var body: some View {
         Canvas { context, size in
@@ -479,9 +492,9 @@ private struct CalGridLines: View {
                 let x = (calGutter + colW * CGFloat(i)).rounded() + 0.5
                 verticals.move(to: CGPoint(x: x, y: 0)); verticals.addLine(to: CGPoint(x: x, y: size.height))
             }
-            context.stroke(halves, with: .color(Color.primary.opacity(0.05)), lineWidth: 0.5)
-            context.stroke(hours, with: .color(Color.primary.opacity(0.13)), lineWidth: 0.5)
-            context.stroke(verticals, with: .color(Color.primary.opacity(0.13)), lineWidth: 0.5)
+            context.stroke(halves, with: .color(edge.opacity(0.45)), lineWidth: 0.5)
+            context.stroke(hours, with: .color(edge), lineWidth: 0.5)
+            context.stroke(verticals, with: .color(edge), lineWidth: 0.5)
         }
     }
 }
@@ -580,6 +593,7 @@ private struct CalEventBlock: View {
 
 private struct CalMonthGrid: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.skyTheme) private var theme
     let days: [Date]
     let month: Date
     let events: [CalendarEvent]
@@ -587,6 +601,7 @@ private struct CalMonthGrid: View {
     @Binding var selected: CalendarEvent?
     @Binding var popoverKey: String?
     let pickDay: (Date) -> Void
+    let daylight: CalDaylightStore
     let openDay: (Date) -> Void
 
     private var cal: Calendar { .current }
@@ -611,6 +626,7 @@ private struct CalMonthGrid: View {
                             .frame(width: cellW, height: headerH, alignment: .trailing)
                     }
                 }
+                .background(theme.isActive ? theme.panel : .clear)
                 ZStack(alignment: .topLeading) {
                     VStack(spacing: 0) {
                         ForEach(0..<6, id: \.self) { row in
@@ -621,6 +637,7 @@ private struct CalMonthGrid: View {
                                         day: day, inMonth: cal.isDate(day, equalTo: month, toGranularity: .month),
                                         isSelected: cal.isDate(day, inSameDayAs: selectedDay),
                                         events: byDay[cal.startOfDay(for: day)] ?? [], lines: max(1, Int((cellH - 30) / 17)),
+                                        daylightText: cal.isDateInToday(day) || cal.isDate(day, inSameDayAs: selectedDay) ? daylight.lengthText(day) : nil,
                                         selected: $selected, popoverKey: $popoverKey)
                                         .frame(width: cellW, height: cellH)
                                         .contentShape(.rect)
@@ -640,7 +657,7 @@ private struct CalMonthGrid: View {
                             let x = (CGFloat(c) * cellW).rounded() + 0.5
                             path.move(to: CGPoint(x: x, y: 0)); path.addLine(to: CGPoint(x: x, y: size.height))
                         }
-                        context.stroke(path, with: .color(Color.primary.opacity(0.13)), lineWidth: 0.5)
+                        context.stroke(path, with: .color(theme.edge), lineWidth: 0.5)
                     }
                     .frame(width: proxy.size.width, height: cellH * 6)
                     .allowsHitTesting(false)
@@ -664,11 +681,13 @@ private struct CalMonthGrid: View {
 
 private struct CalMonthCell: View {
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.skyTheme) private var theme
     let day: Date
     let inMonth: Bool
     let isSelected: Bool
     let events: [CalendarEvent]
     let lines: Int
+    let daylightText: String?
     @Binding var selected: CalendarEvent?
     @Binding var popoverKey: String?
 
@@ -689,6 +708,15 @@ private struct CalMonthCell: View {
                     .frame(minWidth: 24, minHeight: 22)
                     .background(isToday ? Color.red : (isSelected ? Color.primary.opacity(0.12) : .clear), in: .capsule)
             }
+            if let daylightText {
+                HStack(spacing: 3) {
+                    Spacer(minLength: 0)
+                    Image(systemName: "sun.max").font(.system(size: 8))
+                    Text(daylightText).font(.system(size: 9)).monospacedDigit()
+                }
+                .foregroundStyle(theme.isActive ? theme.glow.opacity(0.9) : Color.secondary)
+                .padding(.trailing, 4)
+            }
             ForEach(shown) { event in
                 CalMonthLine(event: event, day: day, selected: $selected, popoverKey: $popoverKey)
             }
@@ -705,7 +733,7 @@ private struct CalMonthCell: View {
         .padding(.horizontal, 3)
         .padding(.top, 3)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(isSelected ? Color.accentColor.opacity(0.06) : (inMonth ? .clear : Color.primary.opacity(0.03)))
+        .background(isSelected ? theme.raised.opacity(theme.isActive ? 0.35 : 0.5) : (inMonth ? .clear : (theme.isActive ? theme.sidebar.opacity(0.3) : Color.primary.opacity(0.03))))
     }
 }
 

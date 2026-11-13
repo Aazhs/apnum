@@ -10,6 +10,7 @@ struct NotesView: View {
     @State private var tagFilter: String?
     @State private var selection: UUID?
     @State private var draft: NoteDraft?
+    @Environment(\.skyTheme) private var theme
 
     private var liveNotes: [Note] { model.noteList.filter { !$0.isDeleted } }
 
@@ -98,12 +99,19 @@ struct NotesView: View {
                 }
             }
             .listStyle(.inset)
+            .scrollContentBackground(.hidden)
+            .background(theme.isActive ? theme.sidebar.opacity(0.45) : Color.clear)
         }
     }
 
     private func row(_ note: Note) -> some View {
         NoteRow(note: note)
             .tag(note.id)
+            .listRowBackground(
+                selection == note.id && theme.isActive
+                    ? RoundedRectangle(cornerRadius: 10, style: .continuous).fill(theme.raised.opacity(0.7)).padding(.horizontal, 4)
+                    : nil)
+            .listRowSeparatorTint(theme.edge)
             .contextMenu {
                 Button(note.pinned ? "Unpin" : "Pin", systemImage: note.pinned ? "pin.slash" : "pin") {
                     Task { await model.run("note.update", ["id": .string(note.id.uuidString), "pinned": .bool(!note.pinned)]) }
@@ -262,6 +270,7 @@ private struct NoteRow: View {
 }
 
 private struct TagCapsule: View {
+    @Environment(\.skyTheme) private var theme
     let tag: String
     var onRemove: (() -> Void)?
 
@@ -277,9 +286,9 @@ private struct TagCapsule: View {
             }
         }
         .font(.caption2.weight(.medium))
-        .foregroundStyle(.tint)
+        .foregroundStyle(theme.accent)
         .padding(.horizontal, 7).padding(.vertical, 2)
-        .background(.tint.opacity(0.14), in: Capsule())
+        .background(theme.accent.opacity(0.16), in: Capsule())
     }
 }
 
@@ -365,6 +374,7 @@ private final class NoteDraft {
 private struct NoteEditor: View {
     @Environment(AppModel.self) private var model
     @Bindable var draft: NoteDraft
+    @Environment(\.skyTheme) private var theme
     @State private var tagInput = ""
     @FocusState private var focus: Field?
     private enum Field { case title, tag, body }
@@ -388,6 +398,7 @@ private struct NoteEditor: View {
                 .lineSpacing(5)
                 .scrollContentBackground(.hidden)
                 .scrollIndicators(.never)
+                .tint(theme.accent)
                 .focused($focus, equals: .body)
         }
         .frame(maxWidth: 680, maxHeight: .infinity, alignment: .topLeading)
