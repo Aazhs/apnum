@@ -18,7 +18,8 @@ struct PhoneView: View {
         case .off: "Link is off"
         case .notPaired: "Not paired"
         case .waitingForPhone: model.pairedDevice.map { "\($0.name) is offline" } ?? "Offline"
-        case .connected(let device, _): "\(device.name) is connected"
+        case .connected(let device, _):
+            model.phone.ringingIDs.isEmpty ? "\(device.name) is connected" : "\(device.name) is connected. Ringing on your phone"
         }
     }
 

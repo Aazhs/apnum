@@ -381,7 +381,7 @@ struct Fixture {
         let r = registry(Fixture())
         #expect(r.descriptors.map(\.name) == [
             "alarm.create", "alarm.delete", "alarm.list", "alarm.mirror.sync", "alarm.next", "alarm.snooze",
-            "alarm.stop", "alarm.update",
+            "alarm.stop", "alarm.sync", "alarm.update",
         ])
         #expect(r.descriptor(named: "alarm.create")?.inputSchema["required"] == ["hour", "minute"])
         #expect(r.descriptor(named: "alarm.list")?.tier == .read)

@@ -26,6 +26,7 @@ struct Harness: Sendable {
     let link: LinkService
     let registry: ToolRegistry
     let audit: AuditLog
+    let changes = ChangeFeed()
     let port: UInt16
     let paths: AppPaths
 
@@ -35,7 +36,7 @@ struct Harness: Sendable {
     ) async throws {
         self.paths = paths
         let link = LinkService(
-            paths: paths, changes: ChangeFeed(), keys: FileKeyStore(paths: paths), bonjour: false, port: 0,
+            paths: paths, changes: changes, keys: FileKeyStore(paths: paths), bonjour: false, port: 0,
             callTimeout: callTimeout, pingInterval: pingInterval, silenceTimeout: silenceTimeout, pairingLifetime: pairingLifetime)
         let audit = AuditLog(url: nil)
         registry = ToolRegistry(

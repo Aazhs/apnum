@@ -125,6 +125,23 @@ final class AppModel {
             policy: DefaultPermissionPolicy(trusted: { caller in await link.isTrusted(caller: caller) }),
             audit: audit)
         tools = registry.descriptors
+        let alarms = alarms, timers = timers
+        Task {
+            await link.setRingingProvider {
+                let alarmItems = await alarms.ringing()
+                let timerItems = await timers.timers().filter { $0.state == .ringing }.map {
+                    RingRequest(
+                        id: $0.id.uuidString, kind: .timer, title: $0.label.isEmpty ? "Timer" : $0.label,
+                        body: "\(TimerFormat.string($0.duration)) timer finished", canSnooze: false)
+                }
+                return (alarmItems + timerItems).map {
+                    [
+                        "id": .string($0.id), "kind": .string($0.kind.rawValue), "title": .string($0.title),
+                        "body": .string($0.body), "canSnooze": .bool($0.canSnooze),
+                    ]
+                }
+            }
+        }
     }
 
     /// Loads data, subscribes to changes and starts the scheduler. Safe to call more than once.

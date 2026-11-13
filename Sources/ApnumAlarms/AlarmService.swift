@@ -167,6 +167,60 @@ public actor AlarmService {
         return mirrorError
     }
 
+    // MARK: Sync
+
+    /// Merges alarms from the phone (last write wins on `updatedAt`, ties go to the incoming record), then returns
+    /// every alarm, tombstones included, changed after `since`. Per-device fields (`snoozedUntil`, `lastFiredAt`)
+    /// never come from the phone and are not sent to it. Records with out-of-range values are skipped and counted.
+    public func sync(records: [Alarm], since: Date? = nil) async throws -> (records: [Alarm], serverTime: Date, skipped: Int) {
+        var next = all
+        var index: [UUID: Int] = [:]
+        for (i, a) in next.enumerated() { index[a.id] = i }
+        var skipped = 0
+        var changed = false
+        var silence: [UUID] = []
+        for incoming in records {
+            guard (try? Self.validate(hour: incoming.hour, minute: incoming.minute, snoozeMinutes: incoming.snoozeMinutes)) != nil
+            else {
+                skipped += 1
+                continue
+            }
+            var merged = incoming
+            merged.snoozedUntil = nil
+            merged.lastFiredAt = nil
+            if let i = index[incoming.id] {
+                let local = next[i]
+                guard incoming.updatedAt >= local.updatedAt else { continue }
+                merged.snoozedUntil = local.snoozedUntil
+                merged.lastFiredAt = local.lastFiredAt
+                let reschedules = local.hour != merged.hour || local.minute != merged.minute || local.repeatDays != merged.repeatDays
+                    || (!local.isEnabled && merged.isEnabled)
+                if reschedules { merged.snoozedUntil = nil; merged.lastFiredAt = nil }
+                if merged.deletedAt != nil || !merged.isEnabled { merged.snoozedUntil = nil }
+                if merged.deletedAt != nil || !merged.isEnabled || reschedules { silence.append(merged.id) }
+                if merged != local {
+                    next[i] = merged
+                    changed = true
+                }
+            } else {
+                index[merged.id] = next.count
+                next.append(merged)
+                changed = true
+            }
+        }
+        if changed {
+            try await commit(next)
+            for id in silence { await stopRingerIfRinging(id) }
+        }
+        let out = all.filter { since == nil || $0.updatedAt > since! }.map { a -> Alarm in
+            var a = a
+            a.snoozedUntil = nil
+            a.lastFiredAt = nil
+            return a
+        }.sorted { ($0.updatedAt, $0.id.uuidString) < ($1.updatedAt, $1.id.uuidString) }
+        return (out, clock(), skipped)
+    }
+
     // MARK: Scheduling
 
     /// The next time `alarm` rings after `date`, or nil if it never will.
@@ -281,6 +335,7 @@ public actor AlarmService {
             AnyTool(AlarmCreateTool(service: self)), AnyTool(AlarmUpdateTool(service: self)),
             AnyTool(AlarmDeleteTool(service: self)), AnyTool(AlarmStopTool(service: self)),
             AnyTool(AlarmSnoozeTool(service: self)), AnyTool(AlarmMirrorSyncTool(service: self)),
+            AnyTool(AlarmSyncTool(service: self)),
         ]
     }
 }

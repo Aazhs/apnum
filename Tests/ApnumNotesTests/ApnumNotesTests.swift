@@ -200,7 +200,7 @@ private func makeService(_ paths: AppPaths = .temporary(), clock: Clock = Clock(
 
     @Test func toolNamesAndTiers() {
         let (reg, _) = registry()
-        #expect(reg.descriptors.map(\.name) == ["note.append", "note.create", "note.delete", "note.get", "note.list", "note.restore", "note.tags", "note.update"])
+        #expect(reg.descriptors.map(\.name) == ["note.append", "note.create", "note.delete", "note.get", "note.list", "note.restore", "note.sync", "note.tags", "note.update"])
         #expect(reg.descriptor(named: "note.list")?.tier == .read)
         #expect(reg.descriptor(named: "note.tags")?.tier == .read)
         #expect(reg.descriptor(named: "note.get")?.tier == .read)
