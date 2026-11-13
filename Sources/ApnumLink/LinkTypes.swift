@@ -108,6 +108,8 @@ public struct PhoneState: Sendable, Equatable {
     public var notifications: [PhoneNotification] = []
     public var call = PhoneCall()
     public var latestCode: PhoneCode?
+    /// Ids of the alarms the phone is ringing right now (from its `phone.ringing` event).
+    public var ringingIDs: [String] = []
 
     public init() {}
 

@@ -190,3 +190,46 @@ struct AlarmMirrorSyncTool: Tool {
         return Ack()
     }
 }
+
+struct AlarmSyncTool: Tool {
+    let service: AlarmService
+    struct Input: Decodable, Sendable {
+        var records: [JSONValue]
+        var since: Date?
+    }
+    struct Output: Codable, Sendable, Equatable {
+        var records: [Alarm]
+        var serverTime: Date
+        var skipped: Int
+    }
+    static let name = "alarm.sync"
+    static let summary = "Merge alarms from the phone (newest updatedAt wins, deletes are tombstones) and return every alarm changed after since."
+    static let tier = PermissionTier.write
+    static let inputSchema = Schema.object([
+        "records": .array(
+            of: .object([
+                "id": .string("Alarm UUID", format: "uuid"),
+                "hour": .integer("Hour, 0-23", minimum: 0, maximum: 23),
+                "minute": .integer("Minute, 0-59", minimum: 0, maximum: 59),
+                "label": .string("Shown when the alarm rings"),
+                "repeatDays": .array(of: .string(enumValues: dayNames), description: "Weekdays to repeat on; empty = one time"),
+                "isEnabled": .boolean("Whether the alarm is on"),
+                "snoozeMinutes": .integer("Snooze length in minutes, 0-180", minimum: 0, maximum: 180),
+                "sound": .string("System sound name; omit for the default"),
+                "createdAt": .string("ISO-8601 time", format: "date-time"),
+                "updatedAt": .string("ISO-8601 time of the last edit", format: "date-time"),
+                "deletedAt": .string("ISO-8601 time the alarm was deleted; omit if live", format: "date-time"),
+            ], required: ["id", "hour", "minute", "label", "repeatDays", "isEnabled", "snoozeMinutes", "createdAt", "updatedAt"]),
+            description: "The sender's alarms to merge; may be empty"),
+        "since": .string("ISO-8601 time; only alarms updated after it are returned (all when omitted)", format: "date-time"),
+    ], required: ["records"])
+    func run(_ input: Input, context: ToolContext) async throws -> Output {
+        var alarms: [Alarm] = []
+        var undecodable = 0
+        for raw in input.records {
+            if let a = try? raw.decode(Alarm.self) { alarms.append(a) } else { undecodable += 1 }
+        }
+        let r = try await service.sync(records: alarms, since: input.since)
+        return Output(records: r.records, serverTime: r.serverTime, skipped: r.skipped + undecodable)
+    }
+}

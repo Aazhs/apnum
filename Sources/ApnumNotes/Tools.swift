@@ -13,6 +13,7 @@ public extension NoteService {
             AnyTool(NoteDeleteTool(service: self)),
             AnyTool(NoteRestoreTool(service: self)),
             AnyTool(NoteTagsTool(service: self)),
+            AnyTool(NoteSyncTool(service: self)),
         ]
     }
 }
@@ -219,5 +220,46 @@ public struct NoteTagsTool: Tool {
 
     public func run(_ input: Empty, context: ToolContext) async throws -> Output {
         Output(tags: await service.allTags())
+    }
+}
+
+public struct NoteSyncTool: Tool {
+    public struct Input: Decodable, Sendable {
+        public var records: [JSONValue]
+        public var since: Date?
+    }
+    public struct Output: Codable, Sendable, Equatable {
+        public var records: [Note]
+        public var serverTime: Date
+        public var skipped: Int
+    }
+    public static let name = "note.sync"
+    public static let summary = "Merge notes from the phone (newest updatedAt wins, deletes are tombstones) and return every note changed after since."
+    public static let tier = PermissionTier.write
+    public static let inputSchema = Schema.object([
+        "records": .array(
+            of: .object([
+                "id": .string("Note UUID", format: "uuid"),
+                "title": .string("Title; may be empty"),
+                "body": .string("Markdown text"),
+                "tags": .array(of: .string(), description: "Tags"),
+                "pinned": .boolean("Pinned to the top"),
+                "createdAt": .string("ISO-8601 time", format: "date-time"),
+                "updatedAt": .string("ISO-8601 time of the last edit", format: "date-time"),
+                "deletedAt": .string("ISO-8601 time the note was deleted; omit if live", format: "date-time"),
+            ], required: ["id", "title", "body", "tags", "pinned", "createdAt", "updatedAt"]),
+            description: "The sender's notes to merge; may be empty"),
+        "since": .string("ISO-8601 time; only notes updated after it are returned (all when omitted)", format: "date-time"),
+    ], required: ["records"])
+    let service: NoteService
+
+    public func run(_ input: Input, context: ToolContext) async throws -> Output {
+        var notes: [Note] = []
+        var skipped = 0
+        for raw in input.records {
+            if let n = try? raw.decode(Note.self) { notes.append(n) } else { skipped += 1 }
+        }
+        let r = try await service.sync(records: notes, since: input.since)
+        return Output(records: r.records, serverTime: r.serverTime, skipped: skipped)
     }
 }

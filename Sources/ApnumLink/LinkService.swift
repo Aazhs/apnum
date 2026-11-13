@@ -44,6 +44,8 @@ public actor LinkService {
     private var connectedSince: Date?
     private var phone = PhoneState()
     private var onCode: (@Sendable (PhoneCode) async -> Void)?
+    private var ringingProvider: (@Sendable () async -> [JSONValue])?
+    private var lastRinging: [JSONValue]?
 
     /// - Parameters:
     ///   - port: 0 picks any free port (tests).
@@ -70,6 +72,10 @@ public actor LinkService {
 
     /// Called with each one-time code the phone reports.
     public func setOnCode(_ hook: (@Sendable (PhoneCode) async -> Void)?) { onCode = hook }
+
+    /// Supplies the Mac's ringing alarms and timers as `[{id, kind, title, body, canSnooze}]` (set by the app, so the
+    /// link stays independent of the alarm and timer modules).
+    public func setRingingProvider(_ provider: @escaping @Sendable () async -> [JSONValue]) { ringingProvider = provider }
 
     public func load() async throws {
         try await store.load()
@@ -235,6 +241,7 @@ public actor LinkService {
         current = session
         connectedSince = Date()
         phone = PhoneState()
+        lastRinging = nil
         try? await store.update { $0.device?.lastSeen = Date() }
         if let old, old.id != session.id { await old.close(reason: "replaced") }
         changes.publish(.link)
@@ -272,6 +279,7 @@ public actor LinkService {
         await peerTools(session, message: message)
         infoTask?.cancel()
         infoTask = Task { [weak self] in await self?.refreshPhone() }
+        await sendRinging(to: session, force: true)
         changes.publish(.link)
     }
 
@@ -306,7 +314,16 @@ public actor LinkService {
 
     private func forward(_ topic: ChangeTopic) async {
         guard Self.forwardedTopics.contains(topic.rawValue), let current else { return }
+        if topic == .ringing { await sendRinging(to: current, force: false) }
         await current.send(["t": "event", "topic": "changed", "data": ["topic": .string(topic.rawValue)]])
+    }
+
+    /// Sends the `ringing` event when the set changed since the last send (always when `force`).
+    private func sendRinging(to session: LinkSession, force: Bool) async {
+        let items = await ringingProvider?() ?? []
+        guard force || items != lastRinging else { return }
+        lastRinging = items
+        await session.send(["t": "event", "topic": "ringing", "data": ["items": .array(items)]])
     }
 
     // MARK: Calling the phone
@@ -369,6 +386,9 @@ public actor LinkService {
             changes.publish(.phone)
         case "call.state":
             phone.call = Self.parseCall(data)
+            changes.publish(.phone)
+        case "phone.ringing":
+            if case .array(let ids)? = data["ids"] { phone.ringingIDs = ids.compactMap { LinkJSON.string($0) } } else { phone.ringingIDs = [] }
             changes.publish(.phone)
         case "battery":
             if let p = LinkJSON.number(data["percent"]) { phone.battery = Int(p) }

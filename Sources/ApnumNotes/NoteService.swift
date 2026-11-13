@@ -145,6 +145,27 @@ public actor NoteService {
         return doomed.count
     }
 
+    // MARK: Sync
+
+    /// Merges notes from the phone (last write wins on `updatedAt`, ties go to the incoming record; tombstones are kept),
+    /// writes changed notes to disk and returns every note, tombstones included, updated after `since`.
+    public func sync(records: [Note], since: Date? = nil) async throws -> (records: [Note], serverTime: Date) {
+        var changed = false
+        for incoming in records {
+            var note = incoming
+            note.tags = Self.cleanTags(note.tags)
+            if let local = store[note.id] {
+                guard note.updatedAt >= local.updatedAt, note != local else { continue }
+            }
+            try write(note)
+            changed = true
+        }
+        if changed { changes.publish(.notes) }
+        let out = store.values.filter { since == nil || $0.updatedAt > since! }
+            .sorted { ($0.updatedAt, $0.id.uuidString) < ($1.updatedAt, $1.id.uuidString) }
+        return (out, now())
+    }
+
     // MARK: Helpers
 
     private func live(_ id: UUID) throws -> Note {
@@ -154,10 +175,14 @@ public actor NoteService {
         return note
     }
 
-    private func save(_ note: Note) throws {
+    private func write(_ note: Note) throws {
         let data = Data(NoteFile.serialize(note).utf8)
         try data.write(to: fileURL(note.id), options: .atomic)
         store[note.id] = note
+    }
+
+    private func save(_ note: Note) throws {
+        try write(note)
         changes.publish(.notes)
     }
 
