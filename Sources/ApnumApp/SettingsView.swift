@@ -30,6 +30,7 @@ struct SettingsView: View {
 // MARK: - General
 
 private struct GeneralSettings: View {
+    @Environment(\.skyTheme) private var theme
     @Environment(AppModel.self) private var model
     @AppStorage("showInMenuBar") private var showInMenuBar = true
     @State private var loginStatus = SMAppService.mainApp.status
@@ -42,6 +43,7 @@ private struct GeneralSettings: View {
             } footer: {
                 Text("Shows the next alarm and running timers in the menu bar.")
             }
+            .themedRows(theme)
 
             Section {
                 Toggle("Open at login", isOn: Binding(
@@ -58,6 +60,7 @@ private struct GeneralSettings: View {
             } footer: {
                 Text("Alarms can only ring while apnum is running.")
             }
+            .themedRows(theme)
 
             Section {
                 LabeledContent("Data folder") {
@@ -66,6 +69,7 @@ private struct GeneralSettings: View {
                     }
                 }
             }
+            .themedRows(theme)
         }
         .formStyle(.grouped)
     }
@@ -84,6 +88,7 @@ private struct GeneralSettings: View {
 // MARK: - Alarms
 
 private struct AlarmSettingsTab: View {
+    @Environment(\.skyTheme) private var theme
     @Environment(AppModel.self) private var model
     @State private var syncing = false
 
@@ -98,6 +103,7 @@ private struct AlarmSettingsTab: View {
             } footer: {
                 Text("When on, the Clock app rings your alarms instead of apnum, so they also sound on this Mac while apnum is closed. apnum keeps the two in step using a Shortcut.")
             }
+            .themedRows(theme)
 
             if mirrorOn {
                 Section {
@@ -127,6 +133,7 @@ private struct AlarmSettingsTab: View {
                         Link("How to set up the Shortcut", destination: url)
                     }
                 }
+                .themedRows(theme)
             }
         }
         .formStyle(.grouped)
@@ -136,6 +143,7 @@ private struct AlarmSettingsTab: View {
 // MARK: - Permissions
 
 private struct PermissionSettings: View {
+    @Environment(\.skyTheme) private var theme
     @Environment(AppModel.self) private var model
     @State private var notificationStatus: UNAuthorizationStatus = .notDetermined
 
@@ -165,6 +173,7 @@ private struct PermissionSettings: View {
             } footer: {
                 Text("Notifications show alarms and timers that finish. Calendar and Reminders fill Today and the Calendar and Reminders pages. Accessibility lets apnum send media keys: play and pause, next and previous.")
             }
+            .themedRows(theme)
         }
         .formStyle(.grouped)
         .task { await refreshNotifications() }
@@ -201,6 +210,7 @@ private struct PermissionSettings: View {
 // MARK: - About
 
 private struct AboutSettings: View {
+    @Environment(\.skyTheme) private var theme
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     }
@@ -223,6 +233,7 @@ private struct AboutSettings: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
             }
+            .themedRows(theme)
             Section {
                 if let repo = URL(string: "https://github.com/Aazhs/apnum") {
                     LabeledContent("Source code") { Link("github.com/Aazhs/apnum", destination: repo) }
@@ -231,6 +242,7 @@ private struct AboutSettings: View {
                     LabeledContent("License") { Link("MIT License", destination: license) }
                 }
             }
+            .themedRows(theme)
         }
         .formStyle(.grouped)
     }
@@ -245,9 +257,20 @@ private struct SkySettingsTab: View {
     @State private var latitude = ""
     @State private var longitude = ""
     @State private var placeName = ""
+    @Environment(\.skyTheme) private var theme
 
     var body: some View {
         Form {
+            if let location = model.skySettings?.location {
+                Section {
+                    ListSkyDayStrip(location: location)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                } footer: {
+                    Text("Today's sky over \(location.name), midnight to midnight. Change the city and it changes.")
+                }
+                .themedRows(theme)
+            }
+
             Section {
                 Picker("City", selection: Binding(
                     get: { model.skySettings?.location.name ?? "" },
@@ -281,6 +304,7 @@ private struct SkySettingsTab: View {
             } footer: {
                 Text("The sun, moon, stars and sunrise times are worked out for this place. apnum never reads your device's location.")
             }
+            .themedRows(theme)
 
             Section {
                 Toggle("Live weather", isOn: Binding(
@@ -290,6 +314,7 @@ private struct SkySettingsTab: View {
             } footer: {
                 Text("Fetches the current weather for the place above from Open-Meteo every 15 minutes. Only the coordinates are sent.")
             }
+            .themedRows(theme)
 
             Section {
                 Toggle("Colour apnum with the sky", isOn: $tintWithSky)
@@ -297,6 +322,7 @@ private struct SkySettingsTab: View {
             } footer: {
                 Text("Every screen takes its colours from the sky over your city: deep green under a blue day, plum at dusk, indigo at night. Turn it off to use the system appearance.")
             }
+            .themedRows(theme)
         }
         .formStyle(.grouped)
     }
