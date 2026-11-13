@@ -24,6 +24,10 @@ scripts/snapshot.sh notes out.png dark   # screenshot one screen in demo mode, i
 
 The rule that makes agents easy later: **every action is a `Tool`**. The UI may read service state directly for display, but anything that changes state goes through the registry, so the UI, agents and the phone all get the same permissions and audit trail.
 
+## Rust core
+
+`rust/apnum-link` (Noise XX sessions, chunked framing, pairing helpers) is exposed to Swift as `ApnumLinkCore` and to Kotlin through UniFFI. The xcframework in `build/rust/` is not committed: run `scripts/build-rust.sh mac` once before `swift build` and after any change under `rust/`. That script also regenerates the committed `Sources/ApnumLinkCore/apnum_link.swift`; `scripts/build-rust.sh android` regenerates the committed Kotlin bindings and builds the (ignored) `.so` files. `cargo test` runs in `rust/apnum-link`. Wire format: [docs/link-protocol.md](docs/link-protocol.md).
+
 ## UI
 
 Follow [docs/design.md](docs/design.md): native macOS 26 controls, Liquid Glass only on the floating control layer, the sky palette only where time of day is the subject. Shared pieces live in `Sources/ApnumApp/Theme.swift`. Check every UI change with `scripts/snapshot.sh` in light and dark mode.

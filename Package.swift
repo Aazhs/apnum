@@ -19,6 +19,14 @@ let package = Package(
             dependencies: ["ApnumCore"] + features.map { .target(name: $0) }
         ),
         .testTarget(name: "ApnumCoreTests", dependencies: ["ApnumCore"]),
+        // Shared Rust link core. Run scripts/build-rust.sh mac once to create the xcframework.
+        .binaryTarget(name: "ApnumLinkFFI", path: "build/rust/ApnumLinkFFI.xcframework"),
+        .target(
+            name: "ApnumLinkCore",
+            dependencies: ["ApnumLinkFFI"],
+            swiftSettings: [.swiftLanguageMode(.v5)]  // UniFFI-generated code is not Swift 6 clean
+        ),
+        .testTarget(name: "ApnumLinkCoreTests", dependencies: ["ApnumLinkCore"]),
     ]
     + features.map { name in
         name == "ApnumSky"
