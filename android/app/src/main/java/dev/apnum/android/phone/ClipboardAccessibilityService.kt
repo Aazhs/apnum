@@ -70,9 +70,16 @@ class ClipboardAccessibilityService : AccessibilityService() {
             if (finished) return
             finished = true
             handler.removeCallbacksAndMessages(TIMEOUT_TOKEN)
-            view?.let { runCatching { wm.removeViewImmediate(it) } }
-            reading = false
-            if (!ok) fallbackToActivity()
+            // Never remove the window from inside its own focus callback: Android is still handling that
+            // focus change and crashes on the missing view (NullPointerException in ViewRootImpl). Remove it
+            // on the next turn of the main loop instead.
+            val toRemove = view
+            view = null
+            handler.post {
+                toRemove?.let { runCatching { wm.removeView(it) } }
+                reading = false
+                if (!ok) fallbackToActivity()
+            }
         }
 
         val overlay = object : View(this) {
