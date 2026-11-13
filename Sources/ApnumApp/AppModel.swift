@@ -1,6 +1,7 @@
 import ApnumAlarms
 import ApnumCalendar
 import ApnumCore
+import ApnumLink
 import ApnumNotes
 import ApnumSky
 import ApnumSystem
@@ -29,6 +30,7 @@ final class AppModel {
     @ObservationIgnored let notes: NoteService
     @ObservationIgnored let calendar: CalendarService
     @ObservationIgnored let sky: SkyService
+    @ObservationIgnored let link: LinkService
     @ObservationIgnored private let scheduler = WakeScheduler()
     @ObservationIgnored private var started = false
 
@@ -68,6 +70,22 @@ final class AppModel {
     /// Alarms and timers that are ringing right now.
     private(set) var ringing: [RingRequest] = []
 
+    // Phone link
+    var linkStatus: LinkStatus = .off
+    var linkSettings = LinkSettings()
+    var pairedDevice: PairedDevice?
+    var linkFingerprint: String?
+    var phone = PhoneState()
+    /// The pairing code and QR link while a pairing is open.
+    var pairingOffer: PairingOffer?
+    /// The 6-digit number to compare with the phone when it paired by typing the code.
+    var pairingSafety: String?
+    /// Every tool available right now, including the phone's while it is connected.
+    var tools: [ToolDescriptor] = []
+    /// APNUM_DEMO=1 with APNUM_PHONE_DEMO=connected shows a made-up connected phone, with no networking.
+    @ObservationIgnored let phoneDemo = ProcessInfo.processInfo.environment["APNUM_DEMO"] == "1"
+        && ProcessInfo.processInfo.environment["APNUM_PHONE_DEMO"] == "connected"
+
     private(set) var recentActivity: [AuditEntry] = []
     var lastError: String?
 
@@ -79,8 +97,6 @@ final class AppModel {
 
     /// APNUM_DEMO=1 uses sample calendar data and seeds alarms, timers and notes into an empty data folder.
     @ObservationIgnored let isDemo = ProcessInfo.processInfo.environment["APNUM_DEMO"] == "1"
-
-    var tools: [ToolDescriptor] { registry.descriptors }
 
     // MARK: Setup
 
@@ -99,9 +115,16 @@ final class AppModel {
             paths: paths, changes: changes,
             weather: ProcessInfo.processInfo.environment["APNUM_DEMO"] == "1" ? nil : OpenMeteoWeather())
         let system = SystemService(control: LiveSystemControl(), shortcuts: shortcuts, notifier: ringer)
+        let isDemo = ProcessInfo.processInfo.environment["APNUM_DEMO"] == "1"
+        let link = LinkService(
+            paths: paths, changes: changes, keys: isDemo ? FileKeyStore(paths: paths) : KeychainKeyStore(), bonjour: !isDemo)
+        self.link = link
         registry = ToolRegistry(
-            tools: alarms.makeTools() + timers.makeTools() + notes.makeTools() + calendar.makeTools() + sky.makeTools() + system.makeTools(),
+            tools: alarms.makeTools() + timers.makeTools() + notes.makeTools() + calendar.makeTools() + sky.makeTools()
+                + system.makeTools() + link.makeTools(),
+            policy: DefaultPermissionPolicy(trusted: { caller in await link.isTrusted(caller: caller) }),
             audit: audit)
+        tools = registry.descriptors
     }
 
     /// Loads data, subscribes to changes and starts the scheduler. Safe to call more than once.
@@ -158,6 +181,7 @@ final class AppModel {
         }
         if isDemo { await DemoData.seedIfEmpty(self) }
 
+        await startLink()
         for topic in [ChangeTopic.alarms, .timers, .notes, .calendar, .reminders] { await refresh(topic) }
         await refreshActivity()
         if !isDemo { _ = await ringer.requestNotificationPermission() }
@@ -237,6 +261,10 @@ final class AppModel {
             await refreshSky()
             return
         }
+        if topic == .link || topic == .phone {
+            await refreshLink()
+            return
+        }
         if topic == .ringing {
             await refresh(.alarms)
             await refresh(.timers)
@@ -289,7 +317,7 @@ final class AppModel {
         recentActivity = await audit.recent(limit: 100)
     }
 
-    private func report(_ error: any Error) {
+    func report(_ error: any Error) {
         lastError = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 }

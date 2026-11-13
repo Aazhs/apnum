@@ -17,6 +17,8 @@ struct SettingsView: View {
                 .tabItem { Label("Alarms", systemImage: "alarm") }
             SkySettingsTab()
                 .tabItem { Label("Sky", systemImage: "moon.stars") }
+            PhoneSettingsTab()
+                .tabItem { Label("Phone", systemImage: "smartphone") }
             PermissionSettings()
                 .tabItem { Label("Permissions", systemImage: "hand.raised") }
             AboutSettings()
