@@ -63,7 +63,7 @@ class LinkClient(
     private val discovery: MacDiscovery,
     private val scope: CoroutineScope,
     private val http: OkHttpClient = OkHttpClient.Builder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(0, TimeUnit.MILLISECONDS).build(),
-) {
+) : dev.apnum.android.sync.MacCaller {
     private val _connection = MutableStateFlow(if (store.load() == null) ConnectionState.Unpaired else ConnectionState.Searching)
     val connection: StateFlow<ConnectionState> = _connection.asStateFlow()
 
@@ -81,6 +81,14 @@ class LinkClient(
 
     private val _events = MutableSharedFlow<MacEvent>(extraBufferCapacity = 64)
     val macEvents: SharedFlow<MacEvent> = _events.asSharedFlow()
+
+    /** Android 17 blocks local network access until the user allows it; sessions wait for this (a test or older Android sets it true). */
+    private val localNetworkAllowed = MutableStateFlow(true)
+    fun setLocalNetworkAllowed(allowed: Boolean) { localNetworkAllowed.value = allowed; if (allowed) wake.trySend(Unit) }
+
+    override val isConnected: Boolean get() = active != null
+    override fun hasTool(name: String): Boolean = _macTools.value.any { it.name == name }
+    override suspend fun call(tool: String, input: JsonObject): JsonElement = callMac(tool, input)
 
     private class Active(val ws: WebSocket, val session: Session)
 
@@ -167,22 +175,34 @@ class LinkClient(
         if (_pairing.value is PairingState.Failed || _pairing.value is PairingState.Done) _pairing.value = PairingState.Idle
     }
 
+    /**
+     * Every new link, scan or typed code replaces whatever pairing was in progress: the old attempt is cancelled,
+     * its pending safety-number question and error are dropped, and only this attempt may report a result.
+     */
     private fun beginPairing(host: String, port: Int, expectedKey: ByteArray?, token: String) {
         val previous = pairJob
         val previousLoop = loopJob
+        val mine = pairGeneration.incrementAndGet()
+        confirmation?.complete(false)
+        confirmation = null
+        _pairing.value = PairingState.Connecting
         pairJob = scope.launch {
             previous?.cancelAndJoin()
             previousLoop?.cancelAndJoin()
+            if (mine != pairGeneration.get()) return@launch
             _pairing.value = PairingState.Connecting
-            val outcome = runSession(host, port, expectedKey, Pairing(token))
-            if (outcome is Outcome.Failed && _pairing.value !is PairingState.Done) {
-                _pairing.value = PairingState.Failed(outcome.message)
-            }
-            if (store.load() != null) {
-                loopJob = scope.launch { reconnectLoop() }
+            val outcome = if (awaitLocalNetwork()) runSession(host, port, expectedKey, Pairing(token)) else Outcome.Failed(LinkErrors.LOCAL_NETWORK)
+            if (mine == pairGeneration.get()) {
+                if (outcome is Outcome.Failed && _pairing.value !is PairingState.Done) _pairing.value = PairingState.Failed(outcome.message)
+                if (store.load() != null) loopJob = scope.launch { reconnectLoop() }
             }
         }
     }
+
+    private val pairGeneration = AtomicLong(0)
+
+    private suspend fun awaitLocalNetwork(): Boolean =
+        localNetworkAllowed.value || withTimeoutOrNull(LOCAL_NETWORK_WAIT_MS) { localNetworkAllowed.first { it } } == true
 
     private class Pairing(val token: String)
 
@@ -230,6 +250,11 @@ class LinkClient(
             val mac = store.load() ?: return reset(ConnectionState.Unpaired)
             _paired.value = mac
             var outcome: Outcome = Outcome.Unreachable
+            if (!awaitLocalNetwork()) {
+                _connection.value = ConnectionState.Searching
+                withTimeoutOrNull(MAX_BACKOFF_MS) { wake.receive() }
+                continue
+            }
             if (mac.host.isNotBlank()) {
                 _connection.value = ConnectionState.Connecting
                 outcome = runSession(mac.host, mac.port, mac.publicKey, null)
@@ -387,14 +412,7 @@ class LinkClient(
     private fun describe(e: Exception): String {
         // The exception type and system message only (an address and errno); never message contents.
         runCatching { android.util.Log.w("apnum", "link connect failed: ${e.javaClass.name}: ${e.message}") }
-        return describeMessage(e)
-    }
-
-    private fun describeMessage(e: Exception): String = when (e) {
-        is java.net.ConnectException, is java.net.SocketTimeoutException, is java.net.UnknownHostException ->
-            "Could not reach the Mac at that address. Check that both devices are on the same network."
-        is kotlinx.coroutines.TimeoutCancellationException -> "The Mac did not answer in time."
-        else -> "Could not connect (${e::class.java.simpleName})."
+        return LinkErrors.describe(e)
     }
 
     // endregion
@@ -409,6 +427,7 @@ class LinkClient(
         private const val DISCOVERY_MS = 4_000L
         private const val HANDSHAKE_TIMEOUT_MS = 10_000L
         private const val CONFIRM_TIMEOUT_MS = 120_000L
+        private const val LOCAL_NETWORK_WAIT_MS = 60_000L
 
         private fun nowMs() = System.nanoTime() / 1_000_000
     }
