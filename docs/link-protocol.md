@@ -139,3 +139,33 @@ enum LinkError { Handshake(msg), Crypto(msg), Format(msg) }
 ```
 
 Everything else (WebSocket, JSON, tools, storage) is native code on each side.
+
+## Sync (v1.1): alarms and notes on both devices
+
+Alarms and notes live on both devices so they work when the other is away. The Mac is the hub; the phone keeps a local copy and merges.
+
+- Records carry `id` (UUID string), `updatedAt` and `deletedAt` (ISO-8601, UTC). Deleting sets `deletedAt` (a tombstone); nothing is removed.
+- Merge rule on both sides: for each `id` keep the record with the later `updatedAt` (ties: the incoming record wins on the Mac, the local one wins on the phone, so both end up with the Mac's copy).
+- The phone syncs on connect, after every local edit while connected, and whenever the Mac sends `changed` with topic `alarms` or `notes`. Edits made offline are pushed at the next connect.
+
+### Mac tools
+
+| Tool | Tier | Input | Output |
+|---|---|---|---|
+| `alarm.sync` | write | `records` (array of alarms, may be empty), `since` (ISO date, optional) | `records`: every alarm, tombstones included, whose `updatedAt` is later than `since` (all when `since` is absent) after merging; `serverTime` |
+| `note.sync` | write | `records` (array of notes), `since` | same shape for notes |
+
+The phone stores `serverTime` and sends it as the next `since`.
+
+Alarm record (same JSON as `alarm.list` items, plus tombstones): `id`, `hour` (0-23), `minute`, `label`, `repeatDays` (lowercase weekday names), `isEnabled`, `snoozeMinutes`, `sound` (optional), `createdAt`, `updatedAt`, `deletedAt` (optional). `snoozedUntil` and `lastFiredAt` are per-device and are not synced.
+
+Note record: `id`, `title`, `body`, `tags` (array), `pinned`, `createdAt`, `updatedAt`, `deletedAt` (optional).
+
+### Ringing on both devices
+
+An alarm rings on the Mac and on the phone. Stopping or snoozing on one silences the other:
+
+- The Mac sends event `ringing` with `items`: `[{"id","kind":"alarm"|"timer","title","body","canSnooze"}]` whenever its set of ringing items changes (an empty array when nothing rings).
+- When the user stops or snoozes on the phone, the phone calls `alarm.stop` / `alarm.snooze` (or `timer.stop`) on the Mac with that `id`.
+- When a `ringing` event no longer lists an alarm the phone is ringing, the phone stops ringing it. If the phone is offline it simply rings on its own.
+- The phone sends event `phone.ringing` with `ids` (alarm ids it is ringing) so the Mac can show it; the Mac does not need to act on it.
