@@ -6,3 +6,5 @@ DerivedData/
 .DS_Store
 xcuserdata/
 .claude/
+rust/apnum-link/target/
+android/app/src/main/jniLibs/

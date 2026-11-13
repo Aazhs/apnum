@@ -62,6 +62,7 @@ Requires macOS 26 or later and Xcode 26 or later.
 
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer   # if xcode-select points at the Command Line Tools
+scripts/build-rust.sh mac  # once, and after changing rust/: builds the Rust link core xcframework
 swift test
 scripts/bundle.sh          # creates build/Apnum.app
 open build/Apnum.app
@@ -76,6 +77,10 @@ On first launch apnum asks for notification permission. Calendar and Reminders a
 Star and constellation data come from d3-celestial (BSD-3); see `Sources/ApnumSky/Resources/NOTICE.md`.
 
 Data lives in `~/Library/Application Support/apnum` (`APNUM_HOME` overrides it): `alarms.json`, `timers.json`, `notes/*.md` and `audit.jsonl`.
+
+## Rust core
+
+`rust/apnum-link` holds the Noise XX encryption and pairing helpers shared with the Android app (UniFFI bindings for Swift and Kotlin). The xcframework is built into `build/` and not committed, so run `scripts/build-rust.sh mac` once before `swift build` (needs `rustup` with a stable toolchain). `scripts/build-rust.sh android` builds the `.so` files and Kotlin bindings (needs the Android NDK and `cargo-ndk`). Run its tests with `cargo test` in `rust/apnum-link`.
 
 ## Mirroring alarms into the Clock app
 
