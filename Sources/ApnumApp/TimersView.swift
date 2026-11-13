@@ -38,6 +38,7 @@ private struct TimersRecent: Codable, Hashable, Identifiable {
 
 struct TimersView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.skyTheme) private var theme
     @AppStorage("timerRecents") private var recentsJSON = ""
     @State private var entry = DigitEntry(values: [0, 10, 0], ranges: [0...23, 0...59, 0...59])
     @State private var label = ""
@@ -52,10 +53,12 @@ struct TimersView: View {
         HStack(spacing: 0) {
             recentsColumn
                 .frame(width: 300)
-            Divider()
+                .background(theme.isActive ? theme.sidebar.opacity(0.5) : Color.clear)
+            Rectangle().fill(theme.isActive ? theme.edge : Color.primary.opacity(0.1)).frame(width: 1)
             main
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .background(theme.isActive ? theme.background : Color.clear)
         .navigationTitle("Timers")
         .navigationSubtitle(subtitle)
     }
@@ -76,7 +79,7 @@ struct TimersView: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 28)
                 .padding(.vertical, 10)
-            Divider()
+            Rectangle().fill(theme.isActive ? theme.edge : Color.primary.opacity(0.1)).frame(height: 1)
             List {
                 ForEach(recents) { recent in
                     HStack(spacing: 12) {
@@ -105,6 +108,7 @@ struct TimersView: View {
                         Button("Remove") { remove(recent) }
                     }
                     .listRowInsets(.init(top: 0, leading: 28, bottom: 0, trailing: 20))
+                    .listRowSeparatorTint(theme.isActive ? theme.edge : nil)
                 }
             }
             .listStyle(.plain)
@@ -164,8 +168,9 @@ struct TimersView: View {
                             TimersTile(timer: timer)
                         }
                     }
-                    Divider()
                     compactSetup
+                        .padding(18)
+                        .skyPanel(theme)
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 24)
@@ -182,6 +187,9 @@ struct TimersView: View {
                     labelField
                         .padding(.top, 4)
                 }
+                .padding(.horizontal, 28)
+                .padding(.vertical, 26)
+                .skyPanel(theme)
                 Spacer(minLength: 0)
                 HStack(spacing: 20) {
                     Button("Cancel", action: reset)
@@ -201,9 +209,12 @@ struct TimersView: View {
     private var labelField: some View {
         TextField("Label", text: $label, prompt: Text("Timer"))
             .labelsHidden()
-            .textFieldStyle(.roundedBorder)
+            .textFieldStyle(.plain)
             .multilineTextAlignment(.center)
-            .frame(width: 220)
+            .padding(.horizontal, 12)
+            .frame(width: 220, height: 32)
+            .background(theme.isActive ? theme.raised.opacity(0.6) : Color.primary.opacity(0.06), in: .rect(cornerRadius: 10, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(theme.isActive ? theme.edge : Color.primary.opacity(0.1), lineWidth: 1) }
             .onSubmit { if total > 0 { startFromField() } }
     }
 
@@ -235,6 +246,7 @@ struct TimersView: View {
 
 private struct TimersTile: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.skyTheme) private var theme
     let timer: CountdownTimer
     @State private var pulse = false
 
@@ -266,14 +278,16 @@ private struct TimersTile: View {
                 .lineLimit(1)
             controls
         }
+        .padding(.vertical, 18)
         .frame(maxWidth: .infinity)
+        .skyPanel(theme)
     }
 
     private func ring(at date: Date) -> some View {
         let left = remaining(at: date)
         let progress = ringing ? 1 : (timer.duration > 0 ? min(1, left / timer.duration) : 0)
         return ZStack {
-            Circle().stroke(.quaternary, lineWidth: 6)
+            Circle().stroke(theme.isActive ? AnyShapeStyle(theme.raised) : AnyShapeStyle(.quaternary), lineWidth: 6)
             Circle()
                 .trim(from: 0, to: progress)
                 .stroke(ringTint.opacity(ringing && pulse ? 0.45 : 1), style: StrokeStyle(lineWidth: 6, lineCap: .round))
@@ -287,7 +301,7 @@ private struct TimersTile: View {
                 .foregroundStyle(paused ? .secondary : .primary)
                 .contentTransition(.numericText(countsDown: true))
         }
-        .frame(width: 190, height: 190)
+        .frame(width: 180, height: 180)
         .padding(3)
         .onAppear { updatePulse() }
         .onChange(of: ringing) { updatePulse() }

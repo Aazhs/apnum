@@ -1,6 +1,7 @@
 import ApnumAlarms
 import ApnumCore
 import ApnumTimers
+import ApnumSky
 import AppKit
 import SwiftUI
 
@@ -22,6 +23,7 @@ private enum AlarmEditing: Identifiable {
 
 struct AlarmsView: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.skyTheme) private var theme
     @State private var editing: AlarmEditing?
     @State private var selection: UUID?
 
@@ -95,10 +97,13 @@ struct AlarmsView: View {
                         Divider()
                         Button("Delete", role: .destructive) { delete(alarm) }
                     }
-                    .listRowInsets(.init(top: 0, leading: 28, bottom: 0, trailing: 28))
+                    .listRowInsets(.init(top: 5, leading: 28, bottom: 5, trailing: 28))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
             }
         }
-        .listStyle(.inset)
+        .listStyle(.plain)
+        .skyPage(theme)
         .onKeyPress(.return) {
             guard let id = selection, let alarm = model.alarmList.first(where: { $0.id == id }) else { return .ignored }
             editing = .edit(alarm)
@@ -119,10 +124,24 @@ struct AlarmsView: View {
 
 private struct AlarmRow: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.skyTheme) private var theme
     let alarm: Alarm
 
+    /// The sky when this alarm next rings, if the location is known.
+    private var moment: ClockSkyMoment? {
+        guard let location = model.skySettings?.location,
+            let date = ClockSkyMoment.nextRing(hour: alarm.hour, minute: alarm.minute, days: alarm.repeatDays)
+        else { return nil }
+        return ClockSkyMoment(at: date, location: location)
+    }
+
     var body: some View {
-        HStack(spacing: 20) {
+        HStack(spacing: 18) {
+            if let moment {
+                SkyChip(
+                    moment: moment, dimmed: !alarm.isEnabled,
+                    moonPhase: model.skyScene?.moonPhase ?? 0.5, moonFraction: model.skyScene?.moonFraction ?? 1)
+            }
             ClockText(hour: alarm.hour, minute: alarm.minute, size: 48, weight: .thin)
                 .frame(minWidth: 170, alignment: .leading)
             VStack(alignment: .leading, spacing: 2) {
@@ -132,6 +151,11 @@ private struct AlarmRow: View {
                 Text(AlarmRepeat.summary(alarm.repeatDays))
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                if let moment {
+                    Text(moment.caption)
+                        .font(.caption)
+                        .foregroundStyle(.tertiary)
+                }
             }
             Spacer(minLength: 12)
             Toggle("Enabled", isOn: Binding(
@@ -144,8 +168,10 @@ private struct AlarmRow: View {
             .toggleStyle(.switch)
             .labelsHidden()
         }
+        .padding(.horizontal, 18)
         .frame(height: 84)
-        .opacity(alarm.isEnabled ? 1 : 0.5)
+        .skyPanel(theme)
+        .opacity(alarm.isEnabled ? 1 : 0.55)
         .animation(.easeOut(duration: 0.2), value: alarm.isEnabled)
         .accessibilityElement(children: .contain)
     }
@@ -201,6 +227,7 @@ private enum AlarmTimeEntry {
 
 private struct AlarmEditor: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.skyTheme) private var theme
     @Environment(\.dismiss) private var dismiss
 
     let alarm: Alarm?
@@ -232,6 +259,45 @@ private struct AlarmEditor: View {
         _sound = State(initialValue: alarm?.sound ?? "Glass")
     }
 
+    private var hour24: Int { AlarmTimeEntry.hour24(entry, twelveHour: twelveHour, pm: pm) }
+
+    private var moment: ClockSkyMoment? {
+        guard let location = model.skySettings?.location,
+            let date = ClockSkyMoment.nextRing(hour: hour24, minute: entry.values[1], days: days)
+        else { return nil }
+        return ClockSkyMoment(at: date, location: location)
+    }
+
+    private func setTime(_ date: Date) {
+        let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
+        let h = parts.hour ?? 0, m = parts.minute ?? 0
+        entry = AlarmTimeEntry.entry(hour: h, minute: m, twelveHour: twelveHour)
+        pm = h >= 12
+    }
+
+    private var skyLine: some View {
+        HStack(spacing: 10) {
+            if let moment {
+                SkyChip(
+                    moment: moment, moonPhase: model.skyScene?.moonPhase ?? 0.5,
+                    moonFraction: model.skyScene?.moonFraction ?? 1, size: 32)
+                Text("The sky then: \(moment.caption)")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 8)
+            if let rise = model.skySummary?.sunrise {
+                Button("Sunrise") { setTime(rise.addingTimeInterval(86_400)) }
+                    .buttonStyle(.pill)
+            }
+            if let set = model.skySummary?.sunset {
+                Button("Sunset") { setTime(set) }
+                    .buttonStyle(.pill)
+            }
+        }
+        .frame(height: 34)
+    }
+
     private var repeatTitle: String { days.isEmpty ? "Never" : AlarmRepeat.summary(days) }
 
     var body: some View {
@@ -251,22 +317,27 @@ private struct AlarmEditor: View {
             }
             .frame(maxWidth: .infinity)
 
+            skyLine
+
             Form {
-                LabeledContent("Repeat") { repeatMenu }
-                LabeledContent("Label") {
-                    TextField("Label", text: $label, prompt: Text("Alarm"))
-                        .labelsHidden()
-                        .multilineTextAlignment(.trailing)
-                        .textFieldStyle(.plain)
+                Group {
+                    LabeledContent("Repeat") { repeatMenu }
+                    LabeledContent("Label") {
+                        TextField("Label", text: $label, prompt: Text("Alarm"))
+                            .labelsHidden()
+                            .multilineTextAlignment(.trailing)
+                            .textFieldStyle(.plain)
+                    }
+                    Picker("Sound", selection: $sound) {
+                        ForEach(sounds, id: \.self) { Text($0).tag($0) }
+                    }
+                    .onChange(of: sound) {
+                        soundChanged = true
+                        NSSound(named: NSSound.Name(sound))?.play()
+                    }
+                    Toggle("Snooze", isOn: $snoozeOn)
                 }
-                Picker("Sound", selection: $sound) {
-                    ForEach(sounds, id: \.self) { Text($0).tag($0) }
-                }
-                .onChange(of: sound) {
-                    soundChanged = true
-                    NSSound(named: NSSound.Name(sound))?.play()
-                }
-                Toggle("Snooze", isOn: $snoozeOn)
+                .listRowBackground(theme.isActive ? theme.panel : nil)
             }
             .formStyle(.grouped)
             .scrollDisabled(true)
@@ -292,6 +363,7 @@ private struct AlarmEditor: View {
         .padding(.top, 24)
         .padding(.bottom, 20)
         .frame(width: 440)
+        .background(theme.isActive ? theme.background : Color.clear)
     }
 
     private var repeatMenu: some View {
@@ -313,7 +385,7 @@ private struct AlarmEditor: View {
     }
 
     private func save() {
-        let hour = AlarmTimeEntry.hour24(entry, twelveHour: twelveHour, pm: pm)
+        let hour = hour24
         let snooze = snoozeOn ? (originalSnooze > 0 ? originalSnooze : 9) : 0
         var input: [String: JSONValue] = [
             "hour": .number(Double(hour)), "minute": .number(Double(entry.values[1])),

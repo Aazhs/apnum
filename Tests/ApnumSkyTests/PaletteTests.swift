@@ -16,3 +16,12 @@ import Testing
     #expect(colors[0].luminance < 0.15)   // midnight
     #expect(colors[12].luminance > 0.45)  // noon
 }
+
+@Test func sunAltitudeIsHighAtNoonAndNegativeAtMidnightInPune() {
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = TimeZone(identifier: "Asia/Kolkata")!
+    let noon = cal.date(from: DateComponents(year: 2026, month: 11, day: 13, hour: 12))!
+    let midnight = cal.date(from: DateComponents(year: 2026, month: 11, day: 13, hour: 0))!
+    #expect(SkyEngine().sunAltitudeDegrees(at: noon, location: .pune) > 40)
+    #expect(SkyEngine().sunAltitudeDegrees(at: midnight, location: .pune) < -20)
+}
