@@ -58,14 +58,15 @@ class AlarmController(
     /** The system woke us at [now]: ring whatever fell due. */
     fun ringDue(now: java.time.Instant, zone: java.time.ZoneId = java.time.ZoneId.systemDefault()) {
         val ids = AlarmLogic.due(repo.store.live.value, repo.snoozedUntil(), now, zone)
-        if (ids.isEmpty()) env.rescheduleAlarms() else ids.forEach { ring(it) }
+        val fresh = ids.filter { !repo.recentlyRang(it) }
+        if (fresh.isEmpty()) env.rescheduleAlarms() else fresh.forEach { ring(it) }
     }
 
     /** The scheduled time arrived. */
     fun ring(id: String) {
         val a = repo.get(id) ?: return env.rescheduleAlarms()
         repo.clearSnooze(a.id)
-        repo.fired(a.id)
+        repo.ringStarted(a.id)
         if (_ringing.value.none { it.id == a.id }) {
             _ringing.value = _ringing.value + Ringing(a.id, a.label, a.hour, a.minute)
             coordination.localStarted(a.id)
@@ -83,7 +84,7 @@ class AlarmController(
 
     fun snooze(id: String) {
         repo.snooze(id)
-        end(id, tellMac = true, action = "alarm.snooze")
+        end(id, tellMac = true, action = "alarm.snooze", disable = false)
     }
 
     fun stopAll() = _ringing.value.forEach { stop(it.id) }
@@ -96,10 +97,11 @@ class AlarmController(
         env.showTimers(items.filter { it.kind == "timer" })
     }
 
-    private fun end(id: String, tellMac: Boolean, action: String, missed: Boolean = false) {
+    private fun end(id: String, tellMac: Boolean, action: String, missed: Boolean = false, disable: Boolean = true) {
         val r = _ringing.value.firstOrNull { it.id == id }
         runCatching { android.util.Log.d("apnum", "ring end: tellMac=$tellMac action=$action missed=$missed") }
         timeouts.remove(id)?.cancel()
+        if (disable) repo.ringEnded(id)
         coordination.localEnded(id)
         _ringing.value = _ringing.value.filter { it.id != id }
         if (tellMac && action.isNotEmpty()) scope.launch { runCatching { env.callMac(action, buildJsonObject { put("id", id) }) } }

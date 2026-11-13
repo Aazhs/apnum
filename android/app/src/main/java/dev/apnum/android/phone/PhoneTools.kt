@@ -15,7 +15,9 @@ import android.os.Bundle
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.telecom.TelecomManager
+import android.provider.CallLog
 import android.telephony.SmsManager
+import android.telephony.SubscriptionManager
 import dev.apnum.android.link.ErrorCode
 import dev.apnum.android.link.Needs
 import dev.apnum.android.link.PhoneTool
@@ -57,7 +59,7 @@ class PhoneTools(
             ) { smsList(it) },
             PhoneTool(
                 "phone.sms.send", "Send an SMS text message from the phone.", "dangerous",
-                Schema.obj("to" to Schema.string("Phone number"), "body" to Schema.string("Message text"), required = listOf("to", "body")),
+                Schema.obj("to" to Schema.string("Phone number; spaces, dashes and brackets are ignored"), "body" to Schema.string("Message text"), required = listOf("to", "body")),
                 listOf(Manifest.permission.SEND_SMS),
             ) { smsSend(it) },
             PhoneTool(
@@ -73,6 +75,15 @@ class PhoneTools(
                 Schema.obj("key" to Schema.string("Notification key"), required = listOf("key")),
                 listOf(Needs.NOTIFICATION_ACCESS),
             ) { notificationDismiss(it) },
+            PhoneTool(
+                "phone.notifications.clear", "Dismiss every notification on the phone that can be dismissed. Returns cleared (count).", "write", Schema.empty,
+                listOf(Needs.NOTIFICATION_ACCESS),
+            ) { notificationsClear() },
+            PhoneTool(
+                "phone.calls.recent", "Recent calls from the call log, newest first: number, contactName, type (incoming, outgoing, missed), dateMs, durationSec. Optional limit (default 20).", "read",
+                Schema.obj("limit" to Schema.integer("Maximum calls, 1 to 200 (default 20)")),
+                listOf(Manifest.permission.READ_CALL_LOG),
+            ) { callsRecent(it) },
             PhoneTool(
                 "phone.call.dial", "Start a phone call to a number.", "dangerous",
                 Schema.obj("number" to Schema.string("Number to call"), required = listOf("number")),
@@ -194,15 +205,26 @@ class PhoneTools(
     }
 
     private fun smsSend(input: JsonObject): JsonElement {
-        val to = input.str("to")?.trim().orEmpty()
+        val to = PhoneNumber.normalize(input.str("to")) ?: throw invalidInput("This sender can't receive replies.")
         val body = input.str("body").orEmpty()
-        if (!to.matches(Regex("""\+?[0-9 ()-]{3,20}"""))) throw invalidInput("to must be a phone number.")
         if (body.isEmpty()) throw invalidInput("body must not be empty.")
-        @Suppress("DEPRECATION")
-        val sms = if (Build.VERSION.SDK_INT >= 31) ctx.getSystemService(SmsManager::class.java) else SmsManager.getDefault()
+        val sms = smsManager()
         val parts = sms.divideMessage(body)
         if (parts.size == 1) sms.sendTextMessage(to, null, body, null, null) else sms.sendMultipartTextMessage(to, null, parts, null, null)
         return buildJsonObject { put("sent", true); put("parts", parts.size) }
+    }
+
+    /** The SmsManager for the default SMS subscription, so dual-SIM phones send from the SIM the user chose for texts. */
+    @Suppress("DEPRECATION")
+    private fun smsManager(): SmsManager {
+        val sub = runCatching { SubscriptionManager.getDefaultSmsSubscriptionId() }.getOrDefault(SubscriptionManager.INVALID_SUBSCRIPTION_ID)
+        val valid = sub != SubscriptionManager.INVALID_SUBSCRIPTION_ID
+        return when {
+            Build.VERSION.SDK_INT >= 31 ->
+                if (valid) ctx.getSystemService(SmsManager::class.java).createForSubscriptionId(sub) else ctx.getSystemService(SmsManager::class.java)
+            valid -> SmsManager.getSmsManagerForSubscriptionId(sub)
+            else -> SmsManager.getDefault()
+        }
     }
 
     fun contactName(number: String?): String? {
@@ -234,9 +256,36 @@ class PhoneTools(
         return buildJsonObject { put("dismissed", true) }
     }
 
+    private fun notificationsClear(): JsonElement {
+        val listener = ApnumNotificationListener.instance ?: throw unavailable("The notification listener is not running.")
+        val own = ctx.packageName
+        val cleared = NotificationClearer.clear(object : NotificationSurface {
+            override fun active() = listener.activeNotifications.orEmpty().map { ActiveNotification(it.key, it.packageName == own, it.isClearable) }
+            override fun cancel(key: String) = listener.cancelNotification(key)
+        })
+        return buildJsonObject { put("cleared", cleared) }
+    }
+
     // endregion
 
     // region calls
+
+    private fun callsRecent(input: JsonObject): JsonElement {
+        val limit = (input.int("limit") ?: 20).coerceIn(1, 200)
+        val entries = mutableListOf<CallEntry>()
+        val cursor = ctx.contentResolver.query(
+            CallLog.Calls.CONTENT_URI,
+            arrayOf(CallLog.Calls.NUMBER, CallLog.Calls.CACHED_NAME, CallLog.Calls.TYPE, CallLog.Calls.DATE, CallLog.Calls.DURATION),
+            null, null, "${CallLog.Calls.DATE} DESC",
+        ) ?: throw unavailable("The call log could not be opened.")
+        cursor.use {
+            while (entries.size < limit && it.moveToNext()) {
+                val number = it.getString(0)?.takeIf { n -> n.isNotBlank() }
+                entries += CallEntry(number, it.getString(1)?.takeIf { n -> n.isNotBlank() }, CallLogJson.typeName(it.getInt(2)), it.getLong(3), it.getLong(4))
+            }
+        }
+        return CallLogJson.toJson(entries)
+    }
 
     private fun dial(input: JsonObject): JsonElement {
         val number = input.str("number")?.trim().orEmpty()
@@ -296,14 +345,18 @@ class PhoneTools(
 
     private fun clipboardSet(input: JsonObject): JsonElement {
         val text = input.str("text") ?: throw invalidInput("text is required.")
-        ctx.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("apnum", text))
+        ClipboardSync.setPlain(ctx, text)
         return buildJsonObject { put("ok", true) }
     }
 
     // endregion
 
     private fun ring(input: JsonObject): JsonElement {
-        if (input.bool("stop") == true) ringer.stop() else ringer.start()
-        return buildJsonObject { put("ringing", ringer.isRinging) }
+        if (input.bool("stop") == true) {
+            ringer.stop()
+            return buildJsonObject { put("ringing", false) }
+        }
+        ringer.start()
+        return buildJsonObject { put("ringing", true); put("seconds", Ringer.SECONDS) }
     }
 }

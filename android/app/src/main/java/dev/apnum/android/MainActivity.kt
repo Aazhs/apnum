@@ -55,6 +55,12 @@ class MainActivity : ComponentActivity() {
         val graph = ApnumApp.graph(this)
         if (Build.VERSION.SDK_INT >= 37) graph.link.setLocalNetworkAllowed(dev.apnum.android.phone.Perms.has(this, LOCAL_NETWORK))
         graph.startMonitors()
+        graph.clipboard.foreground(true)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ApnumApp.graph(this).clipboard.foreground(false)
     }
 
     private companion object {

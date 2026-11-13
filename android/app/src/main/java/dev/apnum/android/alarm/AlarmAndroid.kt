@@ -240,9 +240,18 @@ class AndroidRingEnvironment(
     override fun ensureServiceRunning() { runCatching { RingService.start(context) } }
     override fun rescheduleAlarms() = scheduler().reschedule()
 
+    private val timerSound = RingPlayer(context)
+    private val timerScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.Default)
+
     override fun showTimers(items: List<MacRingingItem>) {
         val nm = context.getSystemService(NotificationManager::class.java)
-        if (items.isEmpty()) { nm.cancel(AlarmNotifications.TIMER_ID); return }
+        if (items.isEmpty()) {
+            nm.cancel(AlarmNotifications.TIMER_ID)
+            timerSound.stop()
+            return
+        }
+        // A finished timer rings like an alarm (alarm stream) until it is stopped here or on the Mac.
+        timerSound.start(timerScope)
         AlarmNotifications.createChannels(context)
         val t = items.first()
         val n = NotificationCompat.Builder(context, AlarmNotifications.CHANNEL_TIMER)

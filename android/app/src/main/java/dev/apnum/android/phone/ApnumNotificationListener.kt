@@ -20,7 +20,10 @@ class ApnumNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        if (sbn.packageName == packageName) return
+        val n = sbn.notification
+        val ongoing = sbn.isOngoing || n.flags and Notification.FLAG_ONGOING_EVENT != 0 || n.flags and Notification.FLAG_FOREGROUND_SERVICE != 0
+        val summary = n.flags and Notification.FLAG_GROUP_SUMMARY != 0
+        if (!NotificationFilter.mirror(sbn.packageName == packageName, ongoing, summary)) return
         ApnumApp.graph(this).link.sendEvent("notification.posted", describe(this, sbn))
     }
 
