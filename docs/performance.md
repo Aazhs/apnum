@@ -1,6 +1,6 @@
 # Performance
 
-apnum should cost nothing while idle and stay responsive while you drag the Today time-travel slider.
+apnum should cost nothing while idle. The sky follows the real time on its own; there is no manual time control (a time-travel slider existed briefly and was removed as unnecessary complexity).
 
 ## Measuring
 
@@ -14,7 +14,6 @@ Debug switches (environment variables, all off by default):
 | Variable | Effect |
 | --- | --- |
 | `APNUM_PERF=1` | One stderr line per slow operation (`perf scene 2.31 ms`, `perf bake`, `perf frame`; also os_signpost spans for Instruments) and a per-second counter line (`perf per-second applied=29 scrub-set=29`). |
-| `APNUM_SCRUB=1` | Moves the sky preview through the day in 5-minute steps, 30 per second: the slider workload without a human. |
 | `APNUM_SKY_ALWAYS=1` | Keeps the pixel scene animating even when the window is not key (needed to measure a visible Today in the background). |
 
 Settings › About › Diagnostics shows live memory and CPU of the app; it samples every 2 s and only while that tab is on screen.
@@ -28,8 +27,6 @@ demo data has a running timer, which redraws once a second.
 today_idle_cpu 8
 today_unfocused_cpu 3
 other_idle_cpu 1
-scrub_cpu 60
-scrub_updates_per_second 25
 hidden_cpu 3
 memory_mb 80
 ```
@@ -38,12 +35,10 @@ memory_mb 80
 
 | State | Before | After |
 | --- | --- | --- |
-| Scrub: scene updates per second (30 requested) | 4 | 28 |
-| Scrub: CPU | 100% (main thread saturated) | 41-50% |
 | Today visible, animated, idle | n/m | 3.8% |
 | Today, window not key | n/m | 1.8% |
 | Another section, idle | n/m | 0.4% |
-| Memory footprint, Today | 73 MB (while scrubbing) | 54 MB idle, 60 MB scrubbing |
+| Memory footprint, Today | 73 MB | 54 MB idle |
 
 Per operation (APNUM_PERF=1, main-actor view of one scrub tick):
 
@@ -58,6 +53,8 @@ Per operation (APNUM_PERF=1, main-actor view of one scrub tick):
 ## What was slow, and what fixed it
 
 Measuring showed the astronomy and the renderer were never the problem (about 2 ms per tick together). The main thread was saturated by SwiftUI:
+
+(Items 1, 2 and 4 are history: they concerned the time-travel slider, which has since been removed.)
 
 1. **Stepped slider.** `Slider(step: 5)` over 1,440 minutes draws and lays out 288 tick marks and labels on every change. Now the slider is continuous and the value is snapped to 5 minutes in `onChange`.
 2. **Whole-window invalidation.** `model.skyScene` also drove the window theme, the sidebar still and every view that read it, so each tick re-evaluated and re-laid-out the whole window, and re-baked a second pixel scene. The live sky (`skyScene`) now never changes while scrubbing; the preview lives in `previewScene` and `previewSummary`, read only by the Today hero, which is split into small views (scene, clock, readout) that each read only what they show.

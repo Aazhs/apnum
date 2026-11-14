@@ -45,7 +45,7 @@ public enum Perf {
         t.start()
     }()
 
-    /// Counts an event; with `APNUM_PERF=1` the totals print once per second (`perf per-second scrub-set=30 applied=12`).
+    /// Counts an event; with `APNUM_PERF=1` the totals print once per second (`perf per-second frame=20`).
     public static func count(_ name: String) {
         guard enabled else { return }
         _ = ticker

@@ -45,10 +45,20 @@ class SkyTest {
     }
 
     @Test fun themeFollowsTheRecipe() {
-        val p = SkyPalette.forSunAltitude(10.0)
+        // The theme uses the stretched (lingering) altitude so dawn and dusk colours last longer.
+        val p = SkyPalette.forSunAltitude(SkyPalette.lingering(10.0))
         val t = SkyTheme.forSunAltitude(10.0)
         assertEquals(p.ground.mix(p.near, 0.25), t.background)
         assertEquals(p.near.mix(p.mid, 0.35), t.surface)
+    }
+
+    @Test fun dawnAndDuskColoursLinger() {
+        assertEquals(0.0, SkyPalette.lingering(0.0), 1e-9)
+        assertEquals(-18.0, SkyPalette.lingering(-40.0), 1e-9)
+        assertEquals(25.0, SkyPalette.lingering(80.0), 1e-9)
+        assertEquals(7.0, SkyPalette.lingering(13.0), 1e-9)
+        assertEquals(25.0, SkyPalette.lingering(34.0), 1e-9)
+        assertEquals(-6.0, SkyPalette.lingering(-9.5), 1e-9)
     }
 
     @Test fun accentIsSkyTopByDayPeakAtTwilightRimAtNight() {

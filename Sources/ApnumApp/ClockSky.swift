@@ -20,7 +20,7 @@ struct ClockSkyMoment {
 
     /// The sun counts as up from just below the horizon, so a sunrise alarm shows the sun.
     var isDay: Bool { altitude > -1.5 }
-    var palette: SkyPalette { .forSunAltitude(altitude) }
+    var palette: SkyPalette { .forSky(sunAltitude: altitude) }
 
     init(altitude: Double, rising: Bool) {
         self.altitude = altitude

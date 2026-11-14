@@ -69,10 +69,6 @@ measure() {
   mem="$(footprint_mb "$pid")"
   cpu="$(awk -v a="$c0" -v b="$c1" -v s="$t0" -v e="$t1" 'BEGIN { printf "%.1f", (b-a)/(e-s)*100 }')"
   upd="-"
-  if [ "$name" = "scrub" ]; then
-    # Scene updates actually applied per second (median of the per-second counter lines).
-    upd="$(grep -o 'applied=[0-9]*' "$log" | cut -d= -f2 | sort -n | awk '{a[NR]=$1} END {print (NR ? a[int((NR+1)/2)] : 0)}')"
-  fi
   kill "$pid" 2>/dev/null
   RESULTS+=("$name|$cpu|${mem:-?}|$upd")
 }
@@ -81,7 +77,6 @@ echo "Measuring ($SECONDS_PER_STATE s per state)..."
 measure today-idle today APNUM_SKY_ALWAYS=1
 measure today-unfocused today
 measure other-idle notes
-measure scrub today APNUM_SKY_ALWAYS=1 APNUM_SCRUB=1
 measure hidden today
 
 check() {  # check <name> <field: cpu|mem|upd> <limit-key> <min|max>
@@ -110,10 +105,8 @@ echo
 check today-idle cpu today_idle_cpu max
 check today-unfocused cpu today_unfocused_cpu max
 check other-idle cpu other_idle_cpu max
-check scrub cpu scrub_cpu max
-check scrub upd scrub_updates_per_second min
 check hidden cpu hidden_cpu max
-for n in today-idle other-idle scrub; do check "$n" mem memory_mb max; done
+for n in today-idle other-idle; do check "$n" mem memory_mb max; done
 
 if [ "$FAIL" = 0 ]; then echo "All budgets met."; else echo "Budgets exceeded (see docs/performance.md)."; fi
 exit "$FAIL"

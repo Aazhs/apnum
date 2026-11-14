@@ -35,7 +35,7 @@ public struct SkyEngine: Sendable {
         default: break
         }
 
-        let palette = SkyPalette.forSunAltitude(sun.altitudeDegrees)
+        let palette = SkyPalette.forSky(sunAltitude: sun.altitudeDegrees)
             .bloodTinted(blood)
             .weatherTinted(overcast: weather.overcast, wet: weather.kind.wetness)
 
@@ -109,7 +109,7 @@ public extension SkyEngine {
         (0..<samples).map { i in
             let t = start.addingTimeInterval(Double(i) / Double(samples - 1) * 86_400)
             let altitude = Astronomy.sunPosition(t, location).altitudeDegrees
-            return SkyPalette.forSunAltitude(altitude).sky
+            return SkyPalette.forSky(sunAltitude: altitude).sky
         }
     }
 }

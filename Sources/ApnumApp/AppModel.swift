@@ -59,22 +59,12 @@ final class AppModel {
     /// Incomplete reminders across all lists.
     private(set) var openReminders: [Reminder] = []
 
-    /// The live sky. The window theme, sidebar and menu bar follow this, never the preview.
+    /// The sky right now, recomputed once a minute. The whole app's colours follow it.
     private(set) var skyScene: SkyScene?
-    /// The sky at the time being scrubbed to on Today, nil while live. Only the Today hero reads these two,
-    /// so scrubbing does not invalidate the rest of the app.
-    private(set) var previewScene: SkyScene?
-    private(set) var previewSummary: SkySummary?
     private(set) var skySummary: SkySummary?
     private(set) var skySettings: SkySettings?
     /// The real sky colour from midnight to midnight, for the day ribbon.
     private(set) var skyDayColors: [RGB] = []
-    /// A time the user is scrubbing to on Today; nil means now.
-    var skyPreview: Date? {
-        didSet { if skyPreview != oldValue { skyPreviewChanged() } }
-    }
-    @ObservationIgnored private var previewWorker: Task<Void, Never>?
-    @ObservationIgnored private var previewDirty = false
     /// Debug (APNUM_SKY_TIME): the live sky is shown at this time instead of now.
     @ObservationIgnored private var debugSkyDate: Date?
 
@@ -171,15 +161,13 @@ final class AppModel {
         do { try await notes.load() } catch { report(error) }
         await calendar.startObservingChanges()
         await sky.load()
-        // Debug only: APNUM_SKY_TIME=HH:mm opens with the sky previewed at that time (scripts/snapshot.sh).
+        // Debug only: APNUM_SKY_TIME=HH:mm shows the sky at that time instead of now (scripts/snapshot.sh).
         if let t = ProcessInfo.processInfo.environment["APNUM_SKY_TIME"], t.count == 5,
             let h = Int(t.prefix(2)), let m = Int(t.suffix(2)) {
             debugSkyDate = Calendar.current.date(bySettingHour: h, minute: m, second: 0, of: Date())
-            skyPreview = debugSkyDate
         }
         await refreshSky()
         if !isDemo { updates.scheduleAutomaticChecks() }
-        if ProcessInfo.processInfo.environment["APNUM_SCRUB"] == "1" { startScrub() }
         Task { [weak self, sky] in
             // The sky moves slowly: recompute once a minute, and let the service
             // decide when the weather is stale (every 15 minutes at most).
@@ -253,21 +241,6 @@ final class AppModel {
         await refreshSky()
     }
 
-    /// Debug (APNUM_SCRUB=1): moves the sky preview through the day in 5-minute steps, 30 steps per second,
-    /// so the time-travel slider workload can be reproduced and measured without a human.
-    private func startScrub() {
-        Task { [weak self] in
-            var minute = 0
-            while !Task.isCancelled {
-                guard let self else { return }
-                skyPreview = Calendar.current.startOfDay(for: Date()).addingTimeInterval(Double(minute) * 60)
-                Perf.count("scrub-set")
-                minute = (minute + 5) % 1440
-                try? await Task.sleep(for: .milliseconds(33))
-            }
-        }
-    }
-
     func refreshSky() async {
         let date = debugSkyDate ?? Date()
         let (scene, summary) = await sky.snapshot(at: date)
@@ -276,42 +249,6 @@ final class AppModel {
         skySettings = await sky.settings()
         let colors = await sky.dayColors(for: date)
         if colors != skyDayColors { skyDayColors = colors }
-    }
-
-    /// Scrubbing: remember the latest requested time and let one worker catch up to it. Values that arrive
-    /// while a scene is being computed are dropped, so the slider never queues work; the scene is computed
-    /// off the main actor (in `SkyService`) and only the newest result is applied, at most 60 times a second.
-    private func skyPreviewChanged() {
-        guard skyPreview != nil else {
-            previewWorker?.cancel()
-            previewWorker = nil
-            previewDirty = false
-            previewScene = nil
-            previewSummary = nil
-            return
-        }
-        previewDirty = true
-        guard previewWorker == nil else { return }
-        previewWorker = Task { [weak self] in
-            while let self, !Task.isCancelled, await self.applyLatestPreview() {
-                try? await Task.sleep(for: .milliseconds(16))
-            }
-            if !Task.isCancelled { self?.previewWorker = nil }
-        }
-    }
-
-    /// Computes and applies the newest requested preview. Returns false when there is nothing left to do.
-    private func applyLatestPreview() async -> Bool {
-        guard previewDirty, let date = skyPreview else { return false }
-        previewDirty = false
-        let (scene, summary) = await sky.snapshot(at: date)
-        guard let current = skyPreview else { return false }  // returned to live meanwhile
-        if current == date {
-            previewScene = scene
-            previewSummary = summary
-            Perf.count("applied")
-        }
-        return true
     }
 
     func requestCalendarAccess() async {

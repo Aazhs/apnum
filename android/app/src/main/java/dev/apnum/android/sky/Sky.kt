@@ -47,6 +47,21 @@ class SkyPalette(private val c: List<Rgb>) {
             25.0 to frame("#4a86d0", "#68a2dc", "#94c2e8", "#c4e0f0", "#e4eef8", "#ffffff", "#8ea7c6", "#7391b2", "#5a7493", "#4b6a6c", "#33504a", "#22362e", "#f4fbff"),
         )
 
+        /**
+         * Maps a real sun altitude to the altitude used for the palette lookup, so dawn and dusk colours
+         * last longer (same mapping as the Mac app's SkyPalette.lingering).
+         */
+        fun lingering(degrees: Double): Double {
+            val real = doubleArrayOf(-21.0, -9.5, 0.0, 13.0, 34.0)
+            val shown = doubleArrayOf(-18.0, -6.0, 0.0, 7.0, 25.0)
+            if (degrees <= real.first()) return shown.first()
+            if (degrees >= real.last()) return shown.last()
+            var i = 0
+            while (i < real.size - 2 && degrees > real[i + 1]) i++
+            val t = (degrees - real[i]) / (real[i + 1] - real[i])
+            return shown[i] + (shown[i + 1] - shown[i]) * t
+        }
+
         /** The palette for a sun altitude, linearly interpolated between keyframes (clamped at both ends). */
         fun forSunAltitude(degrees: Double): SkyPalette {
             val alt = degrees.coerceIn(keyframes.first().first, keyframes.last().first)
@@ -99,7 +114,7 @@ class SkyTheme(val background: Rgb, val surface: Rgb, val surfaceHigh: Rgb, val 
         }
 
         fun forSunAltitude(alt: Double): SkyTheme {
-            val p = SkyPalette.forSunAltitude(alt)
+            val p = SkyPalette.forSunAltitude(SkyPalette.lingering(alt))
             return SkyTheme(
                 background = p.ground.mix(p.near, 0.25),
                 surface = p.near.mix(p.mid, 0.35),

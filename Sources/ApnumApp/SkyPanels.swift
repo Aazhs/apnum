@@ -106,61 +106,6 @@ struct MoonGlyph: View {
     }
 }
 
-/// Scrub the sky to any time today; "Live" returns to now.
-struct SkyTimeTravel: View {
-    @Binding var preview: Date?
-    let now: Date
-
-    @State private var minutes: Double = 0
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "clock.arrow.2.circlepath")
-                .foregroundStyle(.secondary)
-            // No `step:` here: a stepped slider draws and lays out 288 tick marks on every change, which
-            // was most of the cost of scrubbing. The value is snapped to 5 minutes in `onChange` instead.
-            Slider(value: $minutes, in: 0...1439) { Text("Time of day") }
-                .labelsHidden()
-                .frame(minWidth: 160)
-            Text(ClockFormat.string(preview ?? now))
-                .font(.callout.weight(.medium))
-                .monospacedDigit()
-                .frame(width: 70, alignment: .leading)
-            Button("Live") { preview = nil }
-                .buttonStyle(PillButtonStyle(tint: preview == nil ? nil : .accentColor, width: 64))
-                .disabled(preview == nil)
-                .help("Return to the sky right now")
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .glassEffect(.regular, in: .capsule)
-        .onAppear { minutes = minutesOf(preview ?? now) }
-        .onChange(of: minutes) { _, value in
-            // Snap to 5 minutes; only start previewing when the user moves the slider away from now.
-            let snapped = (value / 5).rounded() * 5
-            let date = dateFor(snapped)
-            guard date != preview else { return }
-            if preview != nil || abs(snapped - minutesOf(now)) >= 5 { preview = date }
-        }
-        .onChange(of: preview) { _, value in
-            // Keep the handle in step when the preview changes from elsewhere (or returns to live).
-            let target = minutesOf(value ?? now)
-            if abs(target - minutes) >= 5 { minutes = target }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Preview the sky at another time")
-    }
-
-    private func minutesOf(_ date: Date) -> Double {
-        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
-        return Double((c.hour ?? 0) * 60 + (c.minute ?? 0))
-    }
-
-    private func dateFor(_ minutes: Double) -> Date {
-        Calendar.current.startOfDay(for: now).addingTimeInterval(minutes * 60)
-    }
-}
-
 extension RGB {
     var color: Color { Color(red: r, green: g, blue: b) }
 }

@@ -89,8 +89,6 @@ struct TodayView: View {
             let now = context.date
             ScrollView {
                 VStack(spacing: 0) {
-                    // The hero reads the previewed sky itself, so scrubbing time only re-evaluates it
-                    // and not the day's panels below.
                     TodayHero(now: now, animatedSky: animatedSky, height: heroHeight)
 
                     // The day's details sit on the ground below the scene.
@@ -362,7 +360,7 @@ private struct TodayGround: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
-        if let p = (model.previewScene ?? model.skyScene)?.palette {
+        if let p = model.skyScene?.palette {
             p.ground.mix(p.near, 0.3).color
         } else {
             Color(nsColor: .windowBackgroundColor)
@@ -370,9 +368,8 @@ private struct TodayGround: View {
     }
 }
 
-/// The real sky over the pixel landscape, with the clock in it. The only part of Today that follows the
-/// time-travel preview, split into small views that each read only what they show, so a scrub tick
-/// re-evaluates the scene, the clock and the readout and nothing around them.
+/// The real sky over the pixel landscape, with the clock in it. Split into small views that each read
+/// only what they show, so the once-a-minute sky update re-evaluates as little as possible.
 private struct TodayHero: View {
     @Environment(AppModel.self) private var model
     let now: Date
@@ -398,17 +395,12 @@ private struct TodayHero: View {
 
     /// Date and a large clock straight on the sky, like a lock screen.
     private var hero: some View {
-        @Bindable var model = model
-        return VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 0) {
             HeroClock(now: now)
             Text(summary(now))
                 .font(.title3.weight(.medium))
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)
-                .modifier(HeroHideWhilePreviewing())
-            SkyTimeTravel(preview: $model.skyPreview, now: now)
-                .frame(maxWidth: 520)
-                .padding(.top, 14)
         }
     }
 
@@ -436,7 +428,7 @@ private struct HeroScene: View {
     let animated: Bool
 
     var body: some View {
-        if let scene = model.previewScene ?? model.skyScene {
+        if let scene = model.skyScene {
             PixelSkyView(scene: scene, animated: animated)
         } else {
             SkyBackdrop(now: now)
@@ -449,16 +441,12 @@ private struct HeroClock: View {
     let now: Date
 
     var body: some View {
-        let preview = model.skyPreview
-        let shown = preview ?? now
         VStack(alignment: .leading, spacing: 0) {
-            Text(preview != nil ? "Previewing the sky" : shown.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+            Text(now.formatted(.dateTime.weekday(.wide).day().month(.wide)))
                 .font(.title2.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .contentTransition(.opacity)
-            ClockText(shown, size: 120, weight: .thin)
+            ClockText(now, size: 120, weight: .thin)
                 .shadow(color: .black.opacity(0.12), radius: 12, y: 4)
-                .opacity(preview != nil ? 0.85 : 1)
         }
     }
 }
@@ -468,31 +456,22 @@ private struct HeroReadout: View {
     let now: Date
 
     var body: some View {
-        if let summary = model.previewSummary ?? model.skySummary, let scene = model.previewScene ?? model.skyScene {
-            SkyReadout(summary: summary, scene: scene, now: model.skyPreview ?? now)
+        if let summary = model.skySummary, let scene = model.skyScene {
+            SkyReadout(summary: summary, scene: scene, now: now)
                 .frame(width: 340)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
 
-/// Light or dark text over the sky, following the previewed sky.
+/// Light or dark text over the sky.
 private struct HeroColorScheme: ViewModifier {
     @Environment(AppModel.self) private var model
     let now: Date
 
     func body(content: Content) -> some View {
-        let dark = (model.previewScene ?? model.skyScene)?.isDark ?? Sky.isDark(atHour: Sky.hour(of: now))
+        let dark = model.skyScene?.isDark ?? Sky.isDark(atHour: Sky.hour(of: now))
         content.environment(\.colorScheme, dark ? .dark : .light)
-    }
-}
-
-/// The "next alarm" line hides while previewing.
-private struct HeroHideWhilePreviewing: ViewModifier {
-    @Environment(AppModel.self) private var model
-
-    func body(content: Content) -> some View {
-        content.opacity(model.skyPreview != nil ? 0 : 1)
     }
 }
 

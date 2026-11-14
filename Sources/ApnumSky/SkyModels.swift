@@ -94,6 +94,29 @@ public struct SkyPalette: Sendable, Equatable, Codable {
         return SkyPalette(all: zip(a.palette.all, b.palette.all).map { $0.mix($1, t) })
     }
 
+    /// The palette apnum shows for a real sun altitude, with dawn and dusk stretched.
+    ///
+    /// Real twilight is brief (about half an hour in the tropics), so the best colours of the day would
+    /// flash past. `lingering` maps the real altitude onto the keyframes so those colours last longer.
+    public static func forSky(sunAltitude degrees: Double) -> SkyPalette {
+        forSunAltitude(lingering(degrees))
+    }
+
+    /// Maps a real sun altitude to the altitude used for the palette lookup. The horizon stays at the
+    /// horizon; everything around it is stretched: night colours end at −21° instead of −18°, deep
+    /// twilight is reached at −9.5° instead of −6°, the golden hour lasts until 13° instead of 7°, and
+    /// full daylight colours arrive at 34° instead of 25°.
+    public static func lingering(_ degrees: Double) -> Double {
+        let real: [Double] = [-21, -9.5, 0, 13, 34]
+        let shown = keyframes.map(\.altitude)  // -18, -6, 0, 7, 25
+        if degrees <= real[0] { return shown[0] }
+        if degrees >= real[real.count - 1] { return shown[shown.count - 1] }
+        var i = 0
+        while i < real.count - 2 && degrees > real[i + 1] { i += 1 }
+        let t = (degrees - real[i]) / (real[i + 1] - real[i])
+        return shown[i] + (shown[i + 1] - shown[i]) * t
+    }
+
     /// Greys and darkens the sky for cloud and rain (aarshj.me `weatherTint`).
     public func weatherTinted(overcast: Double, wet: Double) -> SkyPalette {
         guard overcast > 0 || wet > 0 else { return self }
@@ -378,7 +401,7 @@ public extension SkyScene {
                 position: HorizontalPosition(altitude: seeded.unit() * 1.4, azimuth: (seeded.unit() - 0.5) * 2 * .pi * 0.66),
                 magnitude: -1 + seeded.unit() * 6.5, colorIndex: seeded.unit() * 1.6 - 0.2)
         }
-        let base = SkyPalette.forSunAltitude(sunAltitudeDegrees)
+        let base = SkyPalette.forSky(sunAltitude: sunAltitudeDegrees)
         return SkyScene(
             date: date, location: GeoLocation(name: "Sample", latitude: 18.52, longitude: 73.86), weather: weather,
             palette: base.weatherTinted(overcast: weather.overcast, wet: weather.kind.wetness),
