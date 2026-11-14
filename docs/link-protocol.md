@@ -200,3 +200,19 @@ When *Sync clipboard* is on (a Mac setting, default on), plain text copied on on
 - **Phone → Mac:** Android only lets an app read the clipboard while it is in the foreground. The phone sends the event when apnum is open and the clipboard changes, and from a one-tap *Send clipboard to Mac* action (a Quick Settings tile and a notification action, which briefly bring a transparent activity to the front to read it). The Mac sets its pasteboard on receipt.
 - **Automatic phone → Mac (opt-in):** with the setting *Send what I copy to my Mac automatically* on and the "apnum clipboard" Accessibility service enabled, the phone notices a copy (the system clipboard preview, or a click on Copy / Cut), takes focus for a few milliseconds with a 1x1 transparent accessibility overlay, reads the clip and sends the same `clipboard` event. It skips clips marked sensitive, text over 100,000 characters and text that came from the Mac. If the overlay gets no focus within 500 ms it falls back to the transparent activity.
 - Loop prevention: each side remembers the last text it received from the peer and does not echo it back.
+
+## Timers on both devices (v1.3)
+
+Timers become a synced record like alarms, so a timer started on either device runs on both and still rings on the phone when the Mac is asleep or out of reach.
+
+Timer record: `id` (UUID string), `label`, `durationSec` (number), `state` (`running`, `paused`, `finished`), `endsAt` (ISO-8601 UTC, whole seconds, present while running), `pausedRemainingSec` (present while paused), `createdAt`, `updatedAt`, `deletedAt` (optional tombstone). A cancelled timer is a tombstone. A timer that has rung and been stopped is `finished` and may be purged by either side after a day. Ringing itself is per-device and is not part of the record.
+
+| Tool (on the Mac) | Tier | Input | Output |
+|---|---|---|---|
+| `timer.sync` | write | `records` (array, may be empty), `since` (ISO date, optional) | `records` changed since `since` after merging (all when absent), `serverTime`, `skipped` |
+
+Same merge rule as alarms (later `updatedAt` wins; ties: incoming wins on the Mac, local wins on the phone). The phone syncs on connect, after each local change, and when the Mac sends `changed` with topic `timers`.
+
+Ringing: each device rings a running timer when its own clock reaches `endsAt`. Stop on either device stops both: the phone calls `timer.stop` on the Mac with the `id`; the Mac's `ringing` event no longer listing that timer stops it on the phone. If the devices are not connected, each rings and is stopped on its own, and the next sync reconciles the record (`finished`).
+
+The existing Mac tools (`timer.start`, `timer.pause`, `timer.resume`, `timer.cancel`, `timer.add_time`, `timer.stop`, `timer.list`) keep working and now update the synced record. The stopwatch is not synced.
